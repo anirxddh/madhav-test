@@ -69,15 +69,18 @@ document.addEventListener('DOMContentLoaded', () => {
 function initModeNav() {
   $('nav-ai').addEventListener('click',          () => switchMode('ai'));
   $('nav-traditional').addEventListener('click', () => switchMode('traditional'));
+  $('nav-drafting').addEventListener('click',    () => switchMode('drafting'));
 }
 
 function switchMode(mode) {
   State.mode = mode;
   $('nav-ai').classList.toggle('active',          mode === 'ai');
   $('nav-traditional').classList.toggle('active', mode === 'traditional');
+  $('nav-drafting').classList.toggle('active',    mode === 'drafting');
   $('ai-subnav').style.display = mode === 'ai' ? '' : 'none';
   $('ai-interface').classList.toggle('hidden',          mode !== 'ai');
   $('traditional-interface').classList.toggle('hidden', mode !== 'traditional');
+  $('drafting-interface').classList.toggle('hidden',    mode !== 'drafting');
   updateModeTag();
   closePDFPanel();
   $('sidebar').classList.remove('open');
@@ -120,6 +123,7 @@ function updateModeTag() {
   const map = {
     ai:          { normal: 'AI · Normal', research: 'AI · Research', study: 'AI · Study' },
     traditional: { normal: 'Database Search', research: 'Database Search', study: 'Database Search' },
+    drafting:    { normal: 'Drafting Engine', research: 'Drafting Engine', study: 'Drafting Engine' },
   };
   $('mode-pill-label').textContent = map[State.mode]?.[State.submode] || 'Madhav.ai';
 }
