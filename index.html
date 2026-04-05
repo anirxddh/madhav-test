@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Madhav.ai — Legal Research Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Ambient background orbs -->
+  <div class="bg-orb bg-orb--1" aria-hidden="true"></div>
+  <div class="bg-orb bg-orb--2" aria-hidden="true"></div>
+  <div class="bg-orb bg-orb--3" aria-hidden="true"></div>
+
+  <!-- ============================================================
+       SIDEBAR
+  ============================================================ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__brand">
+      <div class="brand-icon">
+        <span class="ico ico-brand" aria-hidden="true">M</span>
+      </div>
+      <span class="brand-wordmark">madhav<span class="brand-accent">.ai</span></span>
+    </div>
+
+    <button class="btn-new-chat" id="btn-new-chat">
+      <span class="ico ico-plus" aria-hidden="true">+</span>
+      New Session
+    </button>
+
+    <div class="sidebar__group">
+      <p class="sidebar__group-label">Interface</p>
+      <button class="sidebar__mode-btn active" data-mode="ai" id="nav-ai">
+        <span class="ico ico-ai" aria-hidden="true"></span>
+        AI Mode
+      </button>
+      <button class="sidebar__mode-btn" data-mode="traditional" id="nav-traditional">
+        <span class="ico ico-db" aria-hidden="true"></span>
+        Database Search
+      </button>
+    </div>
+
+    <div class="sidebar__group" id="ai-subnav">
+      <p class="sidebar__group-label">Research Mode</p>
+      <button class="sidebar__sub-btn active" data-submode="normal" id="sub-normal">
+        <span class="sub-indicator"></span>Normal Chat
+      </button>
+      <button class="sidebar__sub-btn" data-submode="research" id="sub-research">
+        <span class="sub-indicator"></span>Deep Research
+      </button>
+      <button class="sidebar__sub-btn" data-submode="study" id="sub-study">
+        <span class="sub-indicator"></span>Study Mode
+      </button>
+    </div>
+
+    <div class="sidebar__group sidebar__recent-group">
+      <p class="sidebar__group-label">Recent</p>
+      <div class="sidebar__recent-item">Samatha v. State of AP</div>
+      <div class="sidebar__recent-item">Right to health — Art. 21</div>
+      <div class="sidebar__recent-item">Transfer of tribal land</div>
+      <div class="sidebar__recent-item">Doctrine of proportionality</div>
+      <div class="sidebar__recent-item">Basic structure doctrine</div>
+    </div>
+
+    <div class="sidebar__footer">
+      <span class="status-dot"></span>
+      <span class="status-label">1.1 TB · 1947 – Present</span>
+    </div>
+  </aside>
+
+
+  <!-- ============================================================
+       MAIN — wraps topbar + main-body (content + pdf side panel)
+  ============================================================ -->
+  <main class="main" id="main">
+
+    <header class="topbar">
+      <button class="topbar__hamburger" id="btn-hamburger">
+        <span class="ico ico-menu" aria-hidden="true">≡</span>
+      </button>
+      <div class="topbar__tag" id="mode-pill">
+        <span id="mode-pill-label">AI · Normal Chat</span>
+      </div>
+      <div class="topbar__right">
+        <span class="topbar__connected">
+          <span class="topbar__connected-dot"></span>
+          Backend Connected
+        </span>
+      </div>
+    </header>
+
+    <!-- main-body: flex row — content left, PDF panel right -->
+    <div class="main-body" id="main-body">
+
+      <!-- ========================================================
+           CONTENT AREA (AI + Traditional interfaces live here)
+      ======================================================== -->
+      <div class="main-content" id="main-content">
+
+        <!-- ── AI INTERFACE ───────────────────────────────────── -->
+        <section class="interface" id="ai-interface">
+
+          <div class="ai-welcome" id="ai-welcome">
+            <p class="welcome-eyebrow">Madhav.ai — Legal Intelligence</p>
+            <h1 class="welcome-heading">What are you<br>researching today?</h1>
+            <p class="welcome-sub">Search through Indian Cases from 1947 to Present.</p>
+            <div class="suggestion-grid">
+              <button class="suggestion-pill" data-query="Explain the Samatha judgment and its significance for tribal land rights">Samatha judgment</button>
+              <button class="suggestion-pill" data-query="What are the key Supreme Court cases on Right to Health under Article 21?">Right to Health — Art. 21</button>
+              <button class="suggestion-pill" data-query="Explain the doctrine of proportionality in Indian administrative law">Doctrine of proportionality</button>
+              <button class="suggestion-pill" data-query="Explain the basic structure doctrine from Kesavananda Bharati">Basic structure doctrine</button>
+              <button class="suggestion-pill" data-query="Cases on Vishaka guidelines and workplace sexual harassment">Vishaka guidelines</button>
+              <button class="suggestion-pill" data-query="Cases on transfer of tribal land restrictions in scheduled areas">Tribal land transfer</button>
+            </div>
+          </div>
+
+          <div class="chat-container" id="chat-container"></div>
+
+          <div class="chat-footer">
+            <div class="submode-row" id="submode-bar">
+              <div class="submode-tabs">
+                <button class="submode-tab active" data-submode="normal">Normal</button>
+                <button class="submode-tab" data-submode="research">Research</button>
+                <button class="submode-tab" data-submode="study">Study</button>
+              </div>
+              <span class="submode-hint" id="submode-hint">Conversational legal research</span>
+            </div>
+
+            <div class="input-glass-pill" id="chat-input-bar">
+              <button class="input-attach" title="Attach">
+                <span class="ico ico-plus" aria-hidden="true">+</span>
+              </button>
+              <textarea class="input-textarea" id="chat-input" placeholder="Ask anything about Indian case law..." rows="1"></textarea>
+              <button class="input-send" id="chat-send-btn" title="Send">
+                <span class="ico ico-send" aria-hidden="true">↑</span>
+              </button>
+            </div>
+            <p class="input-disclaimer">Results are for research purposes only · Not legal advice</p>
+          </div>
+
+        </section>
+
+
+        <!-- ── TRADITIONAL INTERFACE ──────────────────────────── -->
+        <section class="interface hidden" id="traditional-interface">
+
+          <div class="trad-search-zone">
+            <p class="welcome-eyebrow">Database Mode</p>
+            <h2 class="trad-heading">Legal Database Search</h2>
+
+            <!-- ═══ TOKEN SEARCH INPUT (replaces old search pill) ═══ -->
+            <div class="token-search-wrap" id="token-search-wrap">
+              <div class="token-input-area" id="token-input-area">
+                <!-- Token pills and raw input live here (injected by JS) -->
+                <input
+                  type="text"
+                  class="token-raw-input"
+                  id="token-raw-input"
+                  placeholder="Type to search · press ; to add filter · NOT keyword to exclude"
+                  autocomplete="off"
+                />
+              </div>
+              <button class="trad-search-btn" id="trad-search-btn">Search</button>
+
+              <!-- Suggestion dropdown -->
+              <div class="suggestion-dropdown hidden" id="suggestion-dropdown"></div>
+            </div>
+          </div>
+
+          <div class="trad-body">
+
+            <aside class="trad-filters" id="trad-filters">
+              <div class="filters-top">
+                <span class="filters-title">Filters</span>
+                <button class="filter-reset-lnk" id="filter-reset">Reset</button>
+              </div>
+              <div class="filter-grp">
+                <label class="filter-lbl">Court</label>
+                <select class="filter-ctrl" id="filter-court">
+                  <option value="">All Courts</option>
+                  <option value="supreme">Supreme Court of India</option>
+                  <option value="delhi">Delhi High Court</option>
+                  <option value="bombay">Bombay High Court</option>
+                  <option value="madras">Madras High Court</option>
+                  <option value="calcutta">Calcutta High Court</option>
+                  <option value="allahabad">Allahabad High Court</option>
+                </select>
+              </div>
+              <div class="filter-grp">
+                <label class="filter-lbl">Year Range</label>
+                <div class="filter-year-row">
+                  <input type="number" class="filter-ctrl" id="filter-year-from" placeholder="1947" />
+                  <span style="color:var(--c-dim);font-size:11px">–</span>
+                  <input type="number" class="filter-ctrl" id="filter-year-to" placeholder="2025" />
+                </div>
+              </div>
+              <div class="filter-grp">
+                <label class="filter-lbl">Act / Statute</label>
+                <input type="text" class="filter-ctrl" id="filter-act" placeholder="e.g. Constitution of India" />
+              </div>
+              <div class="filter-grp">
+                <label class="filter-lbl">Judge</label>
+                <input type="text" class="filter-ctrl" id="filter-judge" placeholder="Judge name" />
+              </div>
+              <div class="filter-grp">
+                <label class="filter-lbl">Citation</label>
+                <input type="text" class="filter-ctrl" id="filter-citation" placeholder="e.g. AIR 1997 SC 3297" />
+              </div>
+              <div class="filter-grp">
+                <label class="filter-lbl">Bench Strength</label>
+                <select class="filter-ctrl" id="filter-bench">
+                  <option value="">Any</option>
+                  <option value="2">Division Bench (2)</option>
+                  <option value="3">3 Judges</option>
+                  <option value="5">Constitution Bench (5)</option>
+                  <option value="7">Larger Bench (7+)</option>
+                </select>
+              </div>
+              <button class="filter-apply" id="filter-apply-btn">Apply Filters</button>
+            </aside>
+
+            <div class="trad-results" id="trad-results">
+
+              <!-- ═ ACTIVE FILTER BAR ═ -->
+              <div class="active-filters-bar hidden" id="active-filters-bar">
+                <span class="active-filters-label">Active Filters:</span>
+                <div class="active-filter-tokens" id="active-filter-tokens"></div>
+                <button class="clear-all-btn" id="clear-all-filters">Clear all</button>
+              </div>
+
+              <!-- ═ RESULT EXPLANATION ═ -->
+              <div class="result-explanation hidden" id="result-explanation">
+                <span class="re-main" id="re-count">Showing 0 cases</span>
+                <span class="re-detail" id="re-detail"></span>
+              </div>
+
+              <div class="results-meta hidden" id="results-header">
+                <span class="results-count" id="results-count">0 cases</span>
+                <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--c-dim)">
+                  Sort:
+                  <select class="filter-ctrl" id="results-sort-select" style="width:auto">
+                    <option value="relevance">Relevance</option>
+                    <option value="year-desc">Newest first</option>
+                    <option value="year-asc">Oldest first</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="table-wrap hidden" id="results-table-wrap">
+                <table class="data-table" id="results-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Case Name</th>
+                      <th>Court</th>
+                      <th>Year</th>
+                      <th>Citation</th>
+                      <th>
+                        Authority
+                        <span class="authority-help" title="Based on citation frequency and bench strength">?</span>
+                      </th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="results-tbody"></tbody>
+                </table>
+              </div>
+
+              <!-- Inline case viewer for traditional mode -->
+              <div id="trad-inline-viewer"></div>
+
+              <div class="results-empty" id="results-empty">
+                <div class="empty-icon-wrap">
+                  <span class="ico-search-empty" aria-hidden="true"></span>
+                </div>
+                <p class="empty-title" id="empty-title">Search the legal database</p>
+                <p class="empty-sub" id="empty-sub">Type a keyword, case name, citation, or use the token filters above</p>
+              </div>
+
+              <div class="results-loading hidden" id="results-loading">
+                <div class="spinner"></div>
+                <p>Searching cases<span class="loading-dots"></span></p>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+      </div><!-- /main-content -->
+
+
+      <!-- ════════════════════════════════════════════════════════
+           PDF SIDE PANEL
+      ════════════════════════════════════════════════════════ -->
+      <div class="pdf-side-panel" id="pdf-side-panel">
+        <div class="psp-header">
+          <div class="psp-header-left">
+            <span class="ico ico-doc" aria-hidden="true"></span>
+            <span class="psp-header-title" id="psp-case-title">PDF Viewer</span>
+          </div>
+          <div class="psp-header-actions">
+            <div class="psp-search-area" id="psp-search-area">
+              <span class="ico-search-sm" aria-hidden="true"></span>
+              <input type="text" class="psp-search-input" id="psp-search-input" placeholder="Search in judgement..." />
+              <button class="psp-search-go" id="psp-search-btn">Find</button>
+              <div class="psp-nav-wrap">
+                <button class="psp-nav-btn" id="psp-prev">↑</button>
+                <span class="psp-nav-count" id="psp-match-count">0 / 0</span>
+                <button class="psp-nav-btn" id="psp-next">↓</button>
+              </div>
+            </div>
+            <button class="psp-close-btn" id="psp-close" title="Close PDF panel">
+              <span class="ico ico-close" aria-hidden="true">×</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="psp-body" id="psp-body">
+          <div class="psp-doc-wrap">
+            <div class="psp-doc" id="psp-doc">
+              <div class="psp-empty-state">
+                <span class="ico-doc-empty" aria-hidden="true"></span>
+                <p>Open a case and click <strong>PDF Viewer</strong> to read the full judgement here</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main-body -->
+
+  </main><!-- /main -->
+
+  <!-- Full-page loader -->
+  <div class="page-loader hidden" id="page-loading">
+    <div class="spinner large"></div>
+    <p id="loading-text">Loading...</p>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script src="js/api.js"></script>
+</body>
+</html>
