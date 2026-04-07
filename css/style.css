@@ -739,6 +739,95 @@ a { text-decoration: none; color: inherit; }
 .pdf-trigger-msg .ico-doc-lg { color: var(--c-dim); flex-shrink: 0; }
 
 /* ============================================================
+   RESEARCH MODE CASE VIEWER (Full Case in Research Mode)
+   ============================================================ */
+.research-case-viewer {
+  margin-top: 14px;
+  background: rgba(16,16,20,0.96);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  animation: riseUp var(--med) var(--ease) both;
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+}
+
+.rv-header {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(22,22,28,0.8);
+}
+.rv-chips { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; margin-top: 10px; }
+.rv-chip { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; border-radius: var(--r-pill); padding: 3px 10px; }
+.rv-chip-court { background: rgba(100,130,220,0.15); border: 1px solid rgba(100,130,220,0.3); color: rgba(180,200,255,0.95); }
+.rv-chip-year { background: var(--glass-sm); border: 1px solid var(--border-mid); color: var(--c-mid); font-family: var(--f-mono); }
+.rv-title { font-family: var(--f-serif); font-size: 19px; font-weight: 700; color: var(--c-hi); margin: 0; line-height: 1.25; letter-spacing: -0.2px; }
+
+.rv-tabs { display: flex; padding: 0 20px; border-bottom: 1px solid var(--border); background: rgba(18,18,24,0.7); gap: 2px; }
+.rv-tab { padding: 10px 15px; font-size: 13px; font-weight: 500; color: var(--c-sub); border-bottom: 2px solid transparent; transition: all var(--fast) var(--ease); margin-bottom: -1px; cursor: pointer; background: none; border: none; }
+.rv-tab:hover { color: var(--c-mid); }
+.rv-tab.active { color: var(--c-hi); border-bottom-color: rgba(160,185,255,0.65); }
+
+.rv-body { display: flex; flex-direction: column; }
+.rv-panel { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.rv-panel.hidden { display: none; }
+.rv-text { font-size: 14px; line-height: 1.78; color: var(--c-mid); margin: 0; }
+.rv-text strong { color: var(--c-hi); }
+
+.rv-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.rv-meta-card { background: var(--glass-sm); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; }
+.rv-meta-key { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.9px; color: var(--c-sub); font-weight: 700; margin-bottom: 4px; }
+.rv-meta-val { font-size: 13.5px; color: var(--c-hi); font-weight: 500; }
+
+.rv-facts-list { list-style: none; display: flex; flex-direction: column; gap: 8px; padding: 0; margin: 0; }
+.rv-facts-list li { display: flex; gap: 10px; font-size: 14px; line-height: 1.68; color: var(--c-mid); background: var(--glass-xs); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; }
+.rv-facts-list li::before { content: '›'; color: var(--c-sub); font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+
+.rv-empty { padding: 32px 20px; text-align: center; color: var(--c-sub); font-size: 13.5px; line-height: 1.6; }
+
+.rv-citations-table-wrap { width: 100%; }
+.rv-citations-table { width: 100%; border-collapse: collapse; }
+.rv-citations-table th {
+  background: var(--glass-sm); color: var(--c-sub); font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px; padding: 9px 13px; text-align: left; border-bottom: 1px solid var(--border);
+}
+.rv-citations-table td {
+  padding: 10px 13px; font-size: 13px; color: var(--c-mid); border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle;
+}
+.rv-citations-table tr:hover td { background: var(--glass-xs); }
+
+.pdf-trigger { display: flex; align-items: center; justify-content: center; min-height: 80px; text-align: center; }
+.rv-pdf-msg { font-size: 13.5px; color: var(--c-sub); display: flex; align-items: center; gap: 10px; }
+.rv-pdf-msg .ico-doc-lg { color: var(--c-dim); flex-shrink: 0; }
+
+/* PDF Document rendering in research case viewer */
+.rv-pdf-document {
+  display: flex; flex-direction: column; gap: 12px;
+  padding-bottom: 20px;
+}
+
+.rv-pdf-title {
+  font-size: 16px; font-weight: 700; color: var(--c-hi);
+  margin: 0; letter-spacing: -0.2px; line-height: 1.3;
+}
+
+.rv-pdf-subtitle {
+  font-size: 12px; color: var(--c-mid); font-family: var(--f-mono);
+  margin: 0 0 12px 0; letter-spacing: 0.2px;
+}
+
+.rv-pdf-para {
+  margin: 0 0 10px 0; padding: 10px 12px;
+  background: var(--glass-xs); border-left: 2px solid var(--border-mid);
+  border-radius: var(--r-sm);
+  font-size: 13px; line-height: 1.7; color: var(--c-mid);
+}
+
+.rv-pdf-para-num {
+  font-family: var(--f-mono); font-size: 11px; color: var(--c-sub);
+  margin-right: 8px; font-weight: 700;
+}
+
+/* ============================================================
    PDF SIDE PANEL (Claude-style right preview panel)
    ============================================================ */
 .pdf-side-panel {
@@ -1043,6 +1132,78 @@ a { text-decoration: none; color: inherit; }
 .re-main { font-size: 13px; color: var(--c-mid); font-weight: 500; }
 .re-detail { font-size: 12px; color: var(--c-sub); }
 .re-detail .re-include { color: rgba(140,220,170,0.8); font-weight: 500; }
+
+/* ── Case Intelligence Brief (Research Mode Summary) ────────── */
+.brief-section-header {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #4da6ff;
+  text-transform: uppercase;
+  margin: 18px 0 8px 0;
+  padding: 0 0 6px 0;
+  border-bottom: 2px solid rgba(77, 166, 255, 0.3);
+}
+
+.brief-para-ref {
+  display: inline-block;
+  background: rgba(15, 32, 64, 0.8);
+  color: #4da6ff;
+  font-size: 0.75em;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin: 0 3px;
+  cursor: pointer;
+  border: 1px solid rgba(77, 166, 255, 0.4);
+  transition: all 150ms ease;
+}
+
+.brief-para-ref:hover {
+  background: #0066cc;
+  color: #fff;
+  border-color: #0066cc;
+  box-shadow: 0 0 8px rgba(0, 102, 204, 0.3);
+  transform: scale(1.05);
+}
+
+.brief-para-ref:active {
+  transform: scale(0.98);
+}
+
+.brief-list {
+  padding-left: 20px;
+  margin: 8px 0;
+  list-style-type: disc;
+}
+
+.brief-list li {
+  margin-bottom: 5px;
+  color: #bbb;
+  font-size: 0.93em;
+  line-height: 1.4;
+}
+
+.brief-para {
+  margin: 8px 0;
+  line-height: 1.7;
+  color: #ccc;
+  font-size: 0.95em;
+}
+
+.brief-metadata {
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--r);
+  border-left: 3px solid #0066cc;
+}
+
+.brief-metadata p {
+  margin: 6px 0;
+  font-size: 0.93em;
+  color: #bbb;
+  line-height: 1.5;
+}
 .re-detail .re-exclude { color: rgba(255,130,130,0.8); font-weight: 500; }
 
 /* ── Authority Score Badge ─────────────────────────────────── */

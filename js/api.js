@@ -16,7 +16,7 @@
  */
 
 // ── Configuration ─────────────────────────────────────────────
-const USE_MOCK  = true;                    // ← flip to false when backend is ready
+const USE_MOCK  = false;                   // ← flip to false when backend is ready ✅ NOW LIVE!
 const BASE_URL  = 'http://localhost:8000'; // ← your FastAPI base URL
 
 
@@ -36,7 +36,7 @@ const API = {
    * Body:     { query: string, mode: 'normal' | 'research' | 'study' }
    *
    * Response (normal / research):
-   *   { text: string, cases: Case[] }
+   *   { text: string, cases: Case[], tabular_results: TableRow[], complete_explanation: string, intent: string }
    *
    * Response (study):
    *   { sections: StudySection[] }
@@ -49,7 +49,164 @@ const API = {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ query, mode }),
     });
-    return res.json();
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      throw new Error(data.detail || 'API error');
+    }
+    
+    // CRITICAL DEBUG: Log citations_flat immediately after parsing
+    console.log('[API] === RECEIVED RESPONSE ===', {
+      output_type: data.output_type,
+      citations_flat_type: typeof data.citations_flat,
+      citations_flat_isArray: Array.isArray(data.citations_flat),
+      citations_flat_length: data.citations_flat?.length || 'UNDEFINED',
+      citations_flat_sample: Array.isArray(data.citations_flat) && data.citations_flat.length > 0 
+        ? data.citations_flat[0].target_citation 
+        : 'empty',
+    });
+    
+    console.log('[API] Backend response:', {
+      hasTabularResults: !!data.tabular_results,
+      tabularResultsCount: data.tabular_results?.length,
+      intent: data.intent,
+      isUnique: data.is_unique,
+      hasCompleteExplanation: !!data.complete_explanation,
+    });
+    
+    // Adapt backend response format to frontend expectations
+    // Backend returns: { query, mode, total_results, results, answer, tabular_results, complete_explanation, 
+    //                    intent, is_unique, is_generic, citation_tree, citations_flat, latency_ms }
+    // Frontend expects: { text, cases: [...], tabularResults: [...], completeExplanation: string, intent: string }
+    // Also map field names: case_id → id, case_name → name, relevance_score → score
+    
+    const cases = (data.results || []).map(r => ({
+      id:       r.case_id,
+      name:     r.case_name,
+      court:    r.court || 'Unknown',
+      year:     r.year,
+      citation: r.citation || r.case_id,
+      score:    r.relevance_score,
+      type:     r.result_type,
+      paragraph_text: r.paragraph_text,
+      search_mode: r.search_mode,
+      paraType: r.para_type,
+      pdfLink:  r.pdf_link || `/case/${r.case_id}`,
+    }));
+    
+    // Build tabular results with enhanced information
+    const tabularResults = (data.tabular_results || []).map(row => ({
+      index:           row.index,
+      caseName:        row.case_name,
+      caseId:          row.case_id,
+      court:           row.court,
+      year:            row.year,
+      intent:          row.intent,
+      paraType:        row.para_type,
+      textSnippet:     row.text_snippet,
+      confidenceScore: row.confidence_score,
+      pdfLink:         row.pdf_link || `/case/${row.case_id}`,
+      paraNo:          row.para_no,
+      isPrimary:       row.is_primary,  // Highlight primary match in UI
+    }));
+    
+    console.log('[API] Mapped tabularResults:', {
+      count: tabularResults.length,
+      sample: tabularResults.length > 0 ? tabularResults[0] : 'empty',
+    });
+    
+    // FIX #3/#4/#5/#6: Smart answerText logic per output type
+    let answerText;
+    if (['law', 'answer', 'hybrid'].includes(data.output_type)) {
+      // For law/answer/hybrid: LLM answer is primary, complete_explanation is secondary
+      answerText = data.answer || data.complete_explanation 
+        || `Found ${data.total_results || 0} result${data.total_results !== 1 ? 's' : ''} for "${query}"`;
+    } else if (data.output_type === 'case_answer') {
+      // For case_answer: answer is mandatory, but may be null if LLM failed
+      // Frontend will show "Could not generate answer" message if null
+      answerText = data.answer || null;
+    } else {
+      // For table/citation_graph/judgment_only: use count fallback
+      answerText = `Found ${data.total_results || 0} result${data.total_results !== 1 ? 's' : ''} for "${query}"`;
+    }
+    
+    // Log latency without including in the rendered text
+    if (data.latency_ms) {
+      console.log(`[API] Query latency: ${Math.round(data.latency_ms)}ms`);
+    }    
+    // FIX #5/#6: Show complete_explanation only when different from answer
+    let explanation = null;
+    if (data.output_type !== 'case_answer') {
+      // For non-case_answer: if complete_explanation exists and differs from answer, show it separately
+      if (data.complete_explanation && data.complete_explanation !== data.answer) {
+        explanation = data.complete_explanation;
+      }
+    }
+    
+    // Map judgment_paragraphs from backend
+    const judgmentParagraphs = (data.judgment_paragraphs || []).map(para => ({
+      paragraphId:  para.paragraph_id,
+      caseId:       para.case_id,
+      caseName:     para.case_name,
+      paraNo:       para.para_no,
+      pageNo:       para.page_no,
+      paraType:     para.para_type || 'general',
+      text:         para.text,
+      quality:      para.quality,
+    }));
+
+    // CRITICAL: Map citations_flat before creating result object
+    console.log('[API] === MAPPING CITATIONS ===', {
+      data_citations_flat_type: typeof data.citations_flat,
+      data_citations_flat_length: data.citations_flat?.length || 'UNDEFINED',
+    });
+    
+    const citationsFlat = data.citations_flat || [];
+    console.log('[API] Mapped citationsFlat:', {
+      length: citationsFlat.length,
+      type: typeof citationsFlat,
+      isArray: Array.isArray(citationsFlat),
+      sample: citationsFlat.length > 0 ? citationsFlat[0].target_citation : 'empty',
+    });
+    
+    const result = {
+      text:                  answerText,
+      cases:                 cases,
+      tabularResults:        tabularResults,
+      judgmentParagraphs:    judgmentParagraphs,
+      completeExplanation:   explanation,
+      intent:                data.intent || 'mixed',
+      isUnique:              data.is_unique || false,
+      isGeneric:             data.is_generic || false,
+      outputType:            data.output_type || 'hybrid',
+      citationTree:          data.citation_tree,
+      citationsFlat:         citationsFlat,
+      totalResults:          data.total_results,
+      caseMetadata:          data.case_metadata,
+      caseSummary:           data.case_summary,  // ✨ LLM-generated case summary for full_case
+    };
+    
+    console.log('[API] 📊 Research mode response mapping:');
+    console.log('  outputType:', result.outputType);
+    console.log('  caseMetadata.case_name:', result.caseMetadata?.case_name);
+    console.log('  caseSummary present:', !!result.caseSummary);
+    console.log('  caseSummary length:', result.caseSummary?.length || 0);
+    console.log('  caseSummary content:', result.caseSummary?.substring(0, 100) || 'NONE');
+    
+    console.log('[API] Final return object:', {
+      hasText: !!result.text,
+      casesCount: result.cases.length,
+      tabularResultsCount: result.tabularResults.length,
+      hasCompleteExplanation: !!result.completeExplanation,
+      intent: result.intent,
+      isUnique: result.isUnique,
+      citationsFlatCount: result.citationsFlat?.length || 0,
+      caseMetadataPresent: !!result.caseMetadata,
+      outputType: result.outputType,
+    });
+    
+    return result;
   },
 
 
@@ -95,7 +252,100 @@ const API = {
     }
 
     const res = await fetch(`${BASE_URL}/case/${id}`);
-    return res.json();
+    if (!res.ok) {
+      throw new Error(`Case not found: ${res.status}`);
+    }
+    
+    const data = await res.json();
+    
+    // Map backend response to frontend format
+    // Backend now includes LLM-generated summary (llm_summary field)
+    // Backend returns: { case_id, case_name, court, year, judgment, llm_summary, paragraphs[], ... }
+    // Frontend expects: { id, name, court, year, summary, facts, judgement, cited_in, ... }
+    
+    // Extract summary - PRIORITIZE LLM-generated summary if available
+    let summary = '';
+    if (data.llm_summary && data.llm_summary.trim()) {
+      summary = data.llm_summary;  // ✅ Use LLM-generated summary first
+      console.log('[API] Using LLM-generated summary for case');
+    } else if (data.outcome_summary && data.outcome_summary.trim()) {
+      summary = data.outcome_summary;
+    } else if (data.judgment && data.judgment.trim()) {
+      summary = data.judgment.substring(0, 800);
+    } else if (data.paragraphs && data.paragraphs.length > 0) {
+      // Use first paragraph as summary if judgment unavailable
+      const firstPara = data.paragraphs.find(p => p.text && p.text.trim());
+      summary = firstPara ? firstPara.text.substring(0, 800) : 'Case details are being processed.';
+    } else {
+      summary = 'Full case judgment and arguments available through paragraphs.';
+    }
+    
+    // Extract facts from paragraphs or acts
+    let facts = [];
+    if (data.acts_referred && Array.isArray(data.acts_referred)) {
+      facts = data.acts_referred.map(a => `Statute: ${a}`);
+    }
+    if (facts.length === 0 && data.paragraphs && data.paragraphs.length > 0) {
+      // Create facts from first 5 meaningful paragraphs
+      facts = data.paragraphs
+        .filter(p => p.text && p.text.trim())
+        .slice(0, 5)
+        .map(p => p.text.substring(0, 200).trim() + (p.text.length > 200 ? '...' : ''));
+    }
+    if (facts.length === 0) {
+      facts = ['Case details compiled from court documents'];
+    }
+    
+    // Extract judgment text - prioritize actual judgment paragraphs
+    let judgement = '';
+    if (data.judgment && data.judgment.trim()) {
+      judgement = data.judgment;
+    } else if (data.outcome_summary && data.outcome_summary.trim()) {
+      judgement = data.outcome_summary;
+    } else if (data.paragraphs && data.paragraphs.length > 0) {
+      // Concatenate all paragraphs as judgment text
+      judgement = data.paragraphs
+        .filter(p => p.text && p.text.trim())
+        .map(p => p.text)
+        .join('\n\n');
+    } else {
+      judgement = 'Full judgment text is being compiled from case records.';
+    }
+    
+    // Process citations - use target_citation if cited_case_id is not available
+    let cited_in = [];
+    if (data.citations && Array.isArray(data.citations)) {
+      cited_in = data.citations
+        .filter(c => c && (c.cited_case_id || c.target_citation))
+        .map(c => ({
+          id: c.cited_case_id || c.target_citation,
+          name: c.target_citation || c.cited_case_id || 'Unknown Case',
+          year: c.cited_case_id ? parseInt(c.cited_case_id.split('_')[1]) : null,
+          court: 'Referenced Case',
+          citation: c.target_citation || c.cited_case_id,
+          context: c.context_sentence || '',
+          relationship: c.relationship || 'cited',
+          confidence: c.confidence || 0,
+        }));
+    }
+    
+    return {
+      id:       data.case_id || 'unknown',
+      name:     data.case_name || 'Unknown Case',
+      court:    data.court || 'Unknown Court',
+      year:     data.year || new Date().getFullYear(),
+      citation: data.case_id,
+      summary:  summary,
+      facts:    facts,
+      judgement: judgement,
+      cited_in: cited_in,
+      bench:    data.court_type || 'Single Bench',
+      petitioner: data.petitioner || 'Unknown Party',
+      respondent: data.respondent || 'Unknown Party',
+      paragraphs: data.paragraphs || [],
+      citations: data.citations || [],
+      llm_generated: !!data.llm_summary,  // Track if LLM was used
+    };
   },
 
 

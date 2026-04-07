@@ -163,14 +163,95 @@ async function sendChatMessage() {
 }
 
 function renderAIResponse(data) {
+  console.log('[RENDER] === API RESPONSE RECEIVED ===', {
+    outputType: data.outputType,
+    citationsFlatType: typeof data.citationsFlat,
+    citationsFlatIsArray: Array.isArray(data.citationsFlat),
+    citationsFlatLength: data.citationsFlat?.length || 'UNDEFINED',
+    citationsFlatSample: Array.isArray(data.citationsFlat) && data.citationsFlat.length > 0
+      ? data.citationsFlat[0].target_citation
+      : 'empty',
+  });
+  
+  console.log('[RENDER] API Response received:', {
+    hasTabularResults: !!data.tabularResults,
+    tabularResultsCount: data.tabularResults?.length || 0,
+    intent: data.intent,
+    isUnique: data.isUnique,
+    hasCompleteExplanation: !!data.completeExplanation,
+    citationsFlatCount: data.citationsFlat?.length || 0,
+    hasSections: !!data.sections,
+  });
+  
   if (data.sections) {
     appendChatMessage('ai', null, 'study', [], data.sections);
   } else {
-    appendChatMessage('ai', data.text, State.submode, data.cases || []);
+    // Verify what we're passing
+    console.log('[RENDER] About to call appendChatMessage with parameters:', {
+      tabularResults_exists: !!data.tabularResults,
+      tabularResults_isArray: Array.isArray(data.tabularResults),
+      tabularResults_count: (data.tabularResults || []).length,
+      cases_count: (data.cases || []).length,
+      intent: data.intent,
+      isUnique: data.isUnique,
+      outputType: data.outputType,
+      citationsFlat_count: (data.citationsFlat || []).length,
+      citationsFlat_type: typeof data.citationsFlat,
+      citationsFlat_isArray: Array.isArray(data.citationsFlat),
+      completeExplanation_length: data.completeExplanation?.length || 0,
+      caseSummary_present: !!data.caseSummary,
+      caseSummary_type: typeof data.caseSummary,
+      caseSummary_length: data.caseSummary?.length || 0,
+    });
+    
+    // Pass all new fields including judgmentParagraphs, caseMetadata, citationTree, citationsFlat, caseSummary
+    console.log('[RENDER-DEBUG] ✅ Passing caseSummary to appendChatMessage:', {
+      caseSummary_value: data.caseSummary ? data.caseSummary.substring(0, 50) : 'NULL',
+      caseSummary_length: data.caseSummary?.length || 0,
+    });
+    
+    // FIXED: Don't use spread operator - call directly with all parameters in correct order
+    appendChatMessage(
+      'ai',                                    // 1: role
+      data.text,                               // 2: text
+      State.submode,                           // 3: submode
+      data.cases || [],                        // 4: cases
+      null,                                    // 5: studySections
+      data.tabularResults || [],               // 6: tabularResults
+      data.completeExplanation,                // 7: completeExplanation
+      data.intent,                             // 8: intent
+      data.isUnique,                           // 9: isUnique
+      data.outputType,                         // 10: outputType
+      data.judgmentParagraphs || [],           // 11: judgmentParagraphs
+      data.caseMetadata || {},                 // 12: caseMetadata
+      data.citationTree || null,               // 13: citationTree
+      data.citationsFlat || [],                // 14: citationsFlat
+      data.caseSummary || null                 // 15: caseSummary
+    );
   }
 }
 
-function appendChatMessage(role, text = null, submode = null, cases = [], studySections = null) {
+function appendChatMessage(role, text = null, submode = null, cases = [], studySections = null, 
+                           tabularResults = [], completeExplanation = null, intent = 'mixed', isUnique = false, outputType = 'hybrid', 
+                           judgmentParagraphs = [], caseMetadata = {}, citationTree = null, citationsFlat = [], caseSummary = null) {
+  
+  // Log what we received (simplified now that spread operator bug is fixed)
+  if (role === 'ai' && outputType === 'full_case') {
+    console.log('[APPEND-RECEIVED] ✅ FULL_CASE data received:');
+    console.log('  - citationsFlat.length:', citationsFlat?.length || 0);
+    console.log('  - caseSummary.length:', caseSummary?.length || 0);
+  }
+  
+  // Log input parameters
+  if (role === 'ai') {
+    console.log('[APPEND-MSG] AIMessage parameters:', {
+      outputType: outputType,
+      citationsFlatCount: citationsFlat?.length || 0,
+      caseMetadataPresent: !!caseMetadata?.case_name,
+      judgmentParagraphsCount: judgmentParagraphs?.length || 0,
+    });
+  }
+  
   const container = $('chat-container');
 
   const row    = mk('div', `msg msg--${role}`);
@@ -184,11 +265,304 @@ function appendChatMessage(role, text = null, submode = null, cases = [], studyS
     tag.textContent = cap(submode) + ' Mode';
     bubble.appendChild(tag);
   }
-  if (text) {
+  
+  // Add intent label if present
+  if (role === 'ai' && intent && intent !== 'mixed') {
+    const intentTag = mk('div', 'msg__intent-tag');
+    intentTag.textContent = `🔍 Searching for: ${cap(intent)}`;
+    intentTag.style.fontSize = '0.85em';
+    intentTag.style.color = '#0066cc';
+    bubble.appendChild(intentTag);
+  }
+  
+  // Only add raw text for output types that don't manage it themselves
+  // (law, answer, case_answer, full_case, hybrid, and table handle text rendering internally)
+  const textManagedTypes = ['law', 'answer', 'case_answer', 'full_case', 'hybrid', 'table'];
+  if (text && !textManagedTypes.includes(outputType)) {
     const p = mk('p'); p.innerHTML = text;
     bubble.appendChild(p);
   }
-  if (cases.length)   bubble.appendChild(buildCaseResultsTable(cases));
+  
+  // Use tabular results if available, otherwise fallback to cases
+  console.log('[TABLE-CHECK] tabularResults:', {
+    type: typeof tabularResults,
+    isArray: Array.isArray(tabularResults),
+    length: tabularResults?.length,
+    outputType: outputType,
+  });
+  
+  // Render content based on output_type
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  // judgment_only: Show clean judgment paragraphs only, no answer/table
+  if (outputType === 'judgment_only' && judgmentParagraphs.length > 0) {
+    console.log('[RENDER-TYPE] judgment_only → showing judgment reader only');
+    bubble.appendChild(buildJudgmentParagraphsReader(judgmentParagraphs, caseMetadata));
+  }
+  // citation_graph: Show case metadata + citations
+  else if (outputType === 'citation_graph') {
+    // CRITICAL DEBUG: Log the actual parameter values at entry
+    console.log('[CITATION_GRAPH-ENTRY] === ENTERING citation_graph RENDERER ===', {
+      paramOutputType: outputType,
+      paramCitationsFlat: citationsFlat,
+      paramCitationsFlatType: typeof citationsFlat,
+      paramCitationsFlatIsArray: Array.isArray(citationsFlat),
+      paramCitationsFlatLength: citationsFlat?.length || 'UNDEFINED',
+      paramCaseMetadata: caseMetadata,
+      paramCompleteExplanation: completeExplanation ? 'present' : 'null',
+    });
+    
+    console.log('[RENDER-TYPE] citation_graph → showing case + citations', {
+      citationTree: !!citationTree,
+      citationsFlat: citationsFlat?.length,
+      caseMetadata: !!caseMetadata,
+    });
+    
+    // Case metadata header
+    if (caseMetadata && caseMetadata.case_name) {
+      const caseHeader = mk('div', 'case-header');
+      caseHeader.style.cssText = 'margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #0066cc';
+      const caseName = mk('h3');
+      caseName.textContent = caseMetadata.case_name;
+      caseName.style.margin = '0 0 8px 0';
+      caseHeader.appendChild(caseName);
+      const infoText = [];
+      if (caseMetadata.court) infoText.push(`📍 ${caseMetadata.court}`);
+      if (caseMetadata.year) infoText.push(`📅 ${caseMetadata.year}`);
+      const info = mk('div');
+      info.innerHTML = infoText.join(' | ');
+      info.style.cssText = 'font-size:0.85em;color:#999';
+      caseHeader.appendChild(info);
+      bubble.appendChild(caseHeader);
+    }
+    
+    // Show citations list
+    if (citationsFlat && citationsFlat.length > 0) {
+      console.log('[CITATION-RENDER] === START RENDERING CITATIONS ===', {
+        citationsFlatLength: citationsFlat.length,
+        citationsFlatType: typeof citationsFlat,
+        isArray: Array.isArray(citationsFlat),
+      });
+      console.log('[CITATION-RENDER] Rendering citations table with', citationsFlat.length, 'citations');
+      const citLabel = mk('p');
+      citLabel.textContent = `🔗 Citations (${citationsFlat.length})`;
+      citLabel.style.fontSize = '0.95em';
+      citLabel.style.color = '#0066cc';
+      citLabel.style.marginTop = '15px';
+      citLabel.style.marginBottom = '12px';
+      citLabel.style.fontWeight = 'bold';
+      bubble.appendChild(citLabel);
+      bubble.appendChild(buildCitationsList(citationsFlat));
+    } else {
+      console.log('[CITATION-RENDER] === CITATIONS EMPTY/MISSING ===', {
+        citationsFlat_raw: citationsFlat,
+        citationsFlat_type: typeof citationsFlat,
+        citationsFlat_isArray: Array.isArray(citationsFlat),
+        citationsFlat_length: citationsFlat?.length || 'UNDEFINED',
+        condition_passed: citationsFlat && citationsFlat.length > 0,
+      });
+      console.log('[CITATION-RENDER] No citations found. citationsFlat:', citationsFlat, 'Type:', typeof citationsFlat);
+      if (!citationsFlat || citationsFlat.length === 0) {
+        const noCit = mk('div');
+        noCit.textContent = '📌 No citations available for this case.';
+        noCit.style.padding = '15px';
+        noCit.style.color = '#999';
+        noCit.style.fontStyle = 'italic';
+        noCit.style.marginTop = '15px';
+        bubble.appendChild(noCit);
+      }
+    }
+  }
+  // full_case: Show full case viewer with tabs (Summary, Key Facts, Judgement, Citations, PDF)
+  else if (outputType === 'full_case') {
+    console.log('[RENDER-TYPE] full_case → showing research mode full case viewer with tabs');
+    console.log('[FULL-CASE] 📊 Received data:');
+    console.log('  - caseMetadata:', caseMetadata);
+    console.log('  - judgmentParagraphs:', judgmentParagraphs?.length);
+    console.log('  - citationsFlat:', citationsFlat?.length);
+    console.log('  - caseSummary present:', !!caseSummary);
+    console.log('  - caseSummary length:', caseSummary?.length || 0);
+    console.log('  - caseSummary content:', caseSummary?.substring(0, 100) || 'NONE');
+    
+    if (caseMetadata && caseMetadata.case_name) {
+      bubble.appendChild(buildFullCaseViewer(caseMetadata, judgmentParagraphs || [], citationsFlat || [], caseSummary || null));
+      console.log('[FULL-CASE] ✅ Full case viewer added to bubble');
+    } else {
+      const fallback = mk('div');
+      fallback.textContent = 'No case data available.';
+      fallback.style.color = '#999';
+      bubble.appendChild(fallback);
+    }
+  }
+  // case_answer: Show case-scoped LLM answer + judgment context
+  else if (outputType === 'case_answer') {
+    console.log('[RENDER-TYPE] case_answer → showing case-scoped answer with judgment context');
+    
+    // Case metadata header
+    if (caseMetadata && caseMetadata.case_name) {
+      const caseHeader = mk('div', 'case-header');
+      caseHeader.style.cssText = 'margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #0066cc';
+      const caseName = mk('h3');
+      caseName.textContent = caseMetadata.case_name;
+      caseName.style.margin = '0 0 8px 0';
+      caseHeader.appendChild(caseName);
+      const infoText = [];
+      if (caseMetadata.court) infoText.push(`📍 ${caseMetadata.court}`);
+      if (caseMetadata.year) infoText.push(`📅 ${caseMetadata.year}`);
+      const info = mk('div');
+      info.innerHTML = infoText.join(' | ');
+      info.style.cssText = 'font-size:0.85em;color:#999';
+      caseHeader.appendChild(info);
+      bubble.appendChild(caseHeader);
+    }
+    
+    // LLM answer — this IS the main content for case_answer
+    if (text) {
+      const answerBlock = mk('div', 'ai-answer');
+      answerBlock.innerHTML = text;
+      answerBlock.style.cssText = 'background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:20px;border-left:4px solid #8855ff';
+      bubble.appendChild(answerBlock);
+    } else {
+      // FIX #3/#4: Show helpful message when LLM fails or no paragraphs available
+      const errorBlock = mk('div', 'ai-answer');
+      errorBlock.innerHTML = '<em>⚠️ Could not generate answer — the case may not have sufficient quality paragraphs available. Try searching for a different case or using Research mode.</em>';
+      errorBlock.style.cssText = 'background:#3a2a2a;padding:15px;border-radius:8px;margin-bottom:20px;border-left:4px solid #ff6b6b;color:#ff9999';
+      bubble.appendChild(errorBlock);
+    }
+    
+    // Paragraph references (supporting evidence)
+    if (judgmentParagraphs.length > 0) {
+      const judgeLabel = mk('p');
+      judgeLabel.textContent = '📄 Case paragraphs (source material)';
+      judgeLabel.style.cssText = 'font-size:0.9em;color:#0066cc;margin-top:20px;font-weight:bold';
+      bubble.appendChild(judgeLabel);
+      bubble.appendChild(buildJudgmentParagraphsReader(judgmentParagraphs, caseMetadata));
+    }
+  }
+  // table: Show table only, minimal/no answer text
+  else if (outputType === 'table') {
+    console.log('[RENDER-TYPE] table → showing result count + table');
+    
+    // Show result count/text
+    if (text) {
+      const textDiv = mk('div');
+      textDiv.textContent = text;
+      textDiv.style.color = '#ccc';
+      textDiv.style.marginBottom = '15px';
+      textDiv.style.fontSize = '0.95em';
+      bubble.appendChild(textDiv);
+    }
+    
+    // Show table
+    if (tabularResults.length > 0) {
+      bubble.appendChild(buildEnhancedCaseResultsTable(tabularResults, true));  // Skip label - already in text
+    } else if (cases.length > 0) {
+      bubble.appendChild(buildCaseResultsTable(cases, true));  // Skip label - already in text
+    }
+  }
+  // law: Show LLM answer + case table
+  else if (outputType === 'law') {
+    console.log('[RENDER-TYPE] law → showing law explanation + related cases');
+    
+    // Show LLM answer (statute explanation) - use completeExplanation or text
+    if (completeExplanation || text) {
+      const answer = mk('div', 'ai-answer');
+      answer.innerHTML = completeExplanation || text;
+      answer.style.backgroundColor = '#0f0f0f';
+      answer.style.padding = '15px';
+      answer.style.borderRadius = '8px';
+      answer.style.marginBottom = '20px';
+      answer.style.borderLeft = '4px solid #ffaa00';  // Gold for law/statute
+      bubble.appendChild(answer);
+    }
+    
+    // Show related cases table
+    if (tabularResults.length > 0) {
+      const label = mk('p');
+      label.textContent = '📚 Related Cases:';
+      label.style.fontSize = '0.9em';
+      label.style.color = '#0066cc';
+      label.style.marginTop = '20px';
+      label.style.fontWeight = 'bold';
+      bubble.appendChild(label);
+      bubble.appendChild(buildEnhancedCaseResultsTable(tabularResults, true));  // Skip label - already shown above
+    }
+  }
+  // answer: Show LLM answer + cases
+  else if (outputType === 'answer') {
+    console.log('[RENDER-TYPE] answer → showing RAG answer + citations');
+    
+    // Show LLM answer - use completeExplanation or text
+    if (completeExplanation || text) {
+      const answer = mk('div', 'ai-answer');
+      answer.innerHTML = completeExplanation || text;
+      answer.style.backgroundColor = '#0f0f0f';
+      answer.style.padding = '15px';
+      answer.style.borderRadius = '8px';
+      answer.style.marginBottom = '20px';
+      answer.style.borderLeft = '4px solid #00cc00';  // Green for answers
+      bubble.appendChild(answer);
+    }
+    
+    // Show supporting cases
+    if (tabularResults.length > 0) {
+      const label = mk('p');
+      label.textContent = '📚 Supporting Cases:';
+      label.style.fontSize = '0.9em';
+      label.style.color = '#0066cc';
+      label.style.marginTop = '20px';
+      label.style.fontWeight = 'bold';
+      bubble.appendChild(label);
+      bubble.appendChild(buildEnhancedCaseResultsTable(tabularResults, true));  // Skip label - already shown above
+    } else if (cases.length > 0) {
+      bubble.appendChild(buildCaseResultsTable(cases, true));  // Skip label - text already shows count
+    }
+  }
+  // hybrid (default): Show text + answer + table (in order, all of them)
+  else {
+    console.log('[RENDER-TYPE] hybrid/default → showing text + answer + table');
+    
+    // 1. RESULT COUNT / TEXT
+    if (text) {
+      const textDiv = mk('div');
+      textDiv.textContent = text;
+      textDiv.style.color = '#ccc';
+      textDiv.style.marginBottom = '15px';
+      textDiv.style.fontSize = '0.95em';
+      console.log('[HYBRID] Showing text/result count');
+      bubble.appendChild(textDiv);
+    }
+    
+    // 2. LLM ANSWER / EXPLANATION
+    if (completeExplanation) {
+      const answer = mk('div', 'ai-answer');
+      answer.innerHTML = completeExplanation;
+      answer.style.backgroundColor = '#0f0f0f';
+      answer.style.padding = '15px';
+      answer.style.borderRadius = '8px';
+      answer.style.marginBottom = '20px';
+      answer.style.borderLeft = '4px solid #0066cc';  // Blue for hybrid
+      console.log('[HYBRID] Showing LLM answer/explanation');
+      bubble.appendChild(answer);
+    }
+    
+    // 3. TABLE
+    if (tabularResults && Array.isArray(tabularResults) && tabularResults.length > 0) {
+      console.log('[HYBRID] ✅ Showing table with', tabularResults.length, 'rows');
+      const label = mk('p');
+      label.textContent = '📊 Related Results:';
+      label.style.fontSize = '0.9em';
+      label.style.color = '#0066cc';
+      label.style.marginTop = '20px';
+      label.style.fontWeight = 'bold';
+      bubble.appendChild(label);
+      bubble.appendChild(buildEnhancedCaseResultsTable(tabularResults, true));  // Skip label - already shown above
+    } else if (cases && Array.isArray(cases) && cases.length > 0) {
+      console.log('[HYBRID] Using fallback cases table');
+      bubble.appendChild(buildCaseResultsTable(cases, true));  // Skip label - text already shows count
+    }
+  }
+  
   if (studySections)  bubble.appendChild(buildStudyOutput(studySections));
 
   row.appendChild(avatar);
@@ -204,7 +578,6 @@ function appendTypingIndicator() {
   row.id    = id;
   const dots = mk('div', 'typing-dots');
   dots.innerHTML = '<span></span><span></span><span></span>';
-  row.querySelector('.msg__bubble').appendChild(dots);
   return id;
 }
 function removeTypingIndicator(id) { document.getElementById(id)?.remove(); }
@@ -435,7 +808,16 @@ function renderDropdown(suggestions, rawVal) {
   header.textContent = 'Suggestions — click or press ; to add as filter token';
   dropdown.appendChild(header);
 
-  suggestions.forEach(s => {
+  // Deduplicate suggestions by label (FIX: prevent duplicates)
+  const seen = new Set();
+  const unique = suggestions.filter(s => {
+    const key = s.label + s.type;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  unique.forEach(s => {
     const type = isExclude ? 'exclude' : s.type;
     const item = mk('div', 'suggestion-item');
 
@@ -531,8 +913,11 @@ function makeTokenPill(token, index, withSearch) {
 // 9. INLINE CASE VIEWER
 // ─────────────────────────────────────────────────────────────
 function toggleInlineViewer(caseId, host, btn, singleMode = false) {
+  console.log(`[VIEWER] toggleInlineViewer called for case: ${caseId}`);
+  
   const existing = host.querySelector(`[data-viewer-id="${caseId}"]`);
   if (existing) {
+    console.log(`[VIEWER] Case already open, closing it`);
     existing.remove();
     State.openViewers.delete(caseId);
     resetOpenBtn(btn);
@@ -546,19 +931,44 @@ function toggleInlineViewer(caseId, host, btn, singleMode = false) {
     $$('.btn-open').forEach(b => resetOpenBtn(b));
   }
 
-  // Lookup case data. During development this reads from MOCK_CASES (defined in api.js).
-  // To go live: replace this line with → const caseData = await API.getCase(caseId);
-  const caseData = MOCK_CASES.find(c => c.id === caseId);
-  if (!caseData) return;
+  // Show loading indicator
+  btn.textContent = 'Loading...';
+  btn.disabled = true;
+  console.log(`[VIEWER] Button set to "Loading...", fetching case data`);
 
-  State.openViewers.add(caseId);
-  btn.textContent = 'Close ✕';
-  btn.classList.add('active');
+  // Fetch case data from API
+  API.getCase(caseId)
+    .then(caseData => {
+      console.log(`[VIEWER] Case data received:`, caseData);
+      
+      if (!caseData) {
+        console.error(`[VIEWER] Case data is null/undefined`);
+        btn.textContent = 'Error ✗';
+        btn.disabled = false;
+        return;
+      }
 
-  const viewer = buildCaseViewer(caseData);
-  viewer.dataset.viewerId = caseId;
-  host.appendChild(viewer);
-  setTimeout(() => viewer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
+      console.log(`[VIEWER] Building case viewer for: ${caseData.name}`);
+      State.openViewers.add(caseId);
+      btn.textContent = 'Close ✕';
+      btn.classList.add('active');
+      btn.disabled = false;
+
+      const viewer = buildCaseViewer(caseData);
+      viewer.dataset.viewerId = caseId;
+      host.appendChild(viewer);
+      console.log(`[VIEWER] Case viewer added to DOM`);
+      
+      setTimeout(() => {
+        viewer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        console.log(`[VIEWER] Scrolled to viewer`);
+      }, 60);
+    })
+    .catch(err => {
+      console.error('[VIEWER] Failed to load case:', err);
+      btn.textContent = 'Error ✗';
+      btn.disabled = false;
+    });
 }
 
 function resetOpenBtn(btn) {
@@ -660,6 +1070,422 @@ function buildCaseViewer(c) {
   return viewer;
 }
 
+function buildFullCaseViewer(caseMetadata, judgmentParagraphs, citationsFlat, caseSummary = null) {
+  /**
+   * Research Mode Full Case Viewer
+   * ✨ Tabs: Summary | Key Facts | Judgement | Citations | PDF
+   * 📊 Displays complete case with tabbed interface (no close button)
+   * 🤖 Summary tab shows LLM-generated case summary
+   */
+  const viewer = mk('div', 'research-case-viewer');
+  
+  // Build case object for openPDFPanel compatibility
+  const caseData = {
+    id: caseMetadata.case_id || caseMetadata.id || 'unknown',
+    name: caseMetadata.case_name || caseMetadata.name || 'Unknown Case',
+    court: caseMetadata.court || 'Unknown Court',
+    year: caseMetadata.year || new Date().getFullYear(),
+    citation: caseMetadata.case_id || caseMetadata.citation || '',
+    pdfLink: caseMetadata.pdf_link || `/case/${caseMetadata.case_id || caseMetadata.id || 'unknown'}/${caseMetadata.case_id || caseMetadata.id || 'unknown'}.pdf`,
+    petitioner: caseMetadata.petitioner || '—',
+    respondent: caseMetadata.respondent || '—',
+    paragraphs: judgmentParagraphs.map(p => ({
+      id: p.paraId || p.paragraph_id || `para_${p.paraNo}`,
+      text: p.text,
+      number: p.paraNo,
+      page: p.pageNo,
+      type: p.paraType,
+    })),
+  };
+  
+  // ========================================================================
+  // HEADER
+  // ========================================================================
+  const header = mk('div', 'rv-header');
+  const title = mk('h2', 'rv-title');
+  title.textContent = caseData.name;
+  const chips = mk('div', 'rv-chips');
+  [
+    { text: (caseData.court || '').toUpperCase(), type: 'court' },
+    { text: caseData.year, type: 'year' },
+  ].forEach(c => {
+    if (!c.text) return;
+    const chip = mk('span', `rv-chip rv-chip-${c.type}`);
+    chip.textContent = c.text;
+    chips.appendChild(chip);
+  });
+  header.appendChild(title);
+  header.appendChild(chips);
+  
+  // ========================================================================
+  // TABS
+  // ========================================================================
+  const tabBar = mk('div', 'rv-tabs');
+  const tabs = [
+    { id: 'summary',   label: 'Summary' },
+    { id: 'facts',     label: 'Key Facts' },
+    { id: 'judgement', label: 'Judgement' },
+    { id: 'citations', label: `Citations (${citationsFlat?.length || 0})` },
+    { id: 'pdf',       label: 'PDF Viewer' },
+  ];
+  tabs.forEach((t, i) => {
+    const btn = mk('button', `rv-tab${i === 0 ? ' active' : ''}`);
+    btn.dataset.tab = t.id;
+    btn.textContent = t.label;
+    tabBar.appendChild(btn);
+  });
+  
+  // ========================================================================
+  // PANELS
+  // ========================================================================
+  const body = mk('div', 'rv-body');
+  
+  // --- SUMMARY ---
+  const summaryPanel = mk('div', 'rv-panel', 'summary');
+  summaryPanel.dataset.panel = 'summary';
+  const summaryText = mk('p', 'rv-text');
+  summaryText.innerHTML = buildCaseSummary(caseData, judgmentParagraphs, caseSummary);
+  const metaGrid = mk('div', 'rv-meta-grid');
+  [
+    ['Court', caseData.court || '—'],
+    ['Year', caseData.year || '—'],
+    ['Petitioner', caseData.petitioner || '—'],
+    ['Respondent', caseData.respondent || '—'],
+  ].forEach(([k, v]) => {
+    const card = mk('div', 'rv-meta-card');
+    const key = mk('span', 'rv-meta-key'); key.textContent = k;
+    const val = mk('span', 'rv-meta-val'); val.textContent = v;
+    card.appendChild(key);
+    card.appendChild(val);
+    metaGrid.appendChild(card);
+  });
+  summaryPanel.appendChild(summaryText);
+  summaryPanel.appendChild(metaGrid);
+  
+  // --- KEY FACTS ---
+  const factsPanel = mk('div', 'rv-panel hidden', 'facts');
+  factsPanel.dataset.panel = 'facts';
+  const ul = mk('ul', 'rv-facts-list');
+  const facts = extractKeyFacts(judgmentParagraphs);
+  if (facts.length === 0) {
+    const li = mk('li');
+    li.textContent = 'Facts compiled from case judgment.';
+    ul.appendChild(li);
+  } else {
+    facts.forEach(f => {
+      const li = mk('li');
+      li.textContent = f;
+      ul.appendChild(li);
+    });
+  }
+  factsPanel.appendChild(ul);
+  
+  // --- JUDGEMENT ---
+  const judgementPanel = mk('div', 'rv-panel hidden', 'judgement');
+  judgementPanel.dataset.panel = 'judgement';
+  if (judgmentParagraphs.length === 0) {
+    const empty = mk('p');
+    empty.textContent = 'No judgment paragraphs available.';
+    empty.style.color = '#999';
+    judgementPanel.appendChild(empty);
+  } else {
+    judgementPanel.appendChild(buildJudgmentParagraphsReader(judgmentParagraphs, caseMetadata));
+  }
+  
+  // --- CITATIONS ---
+  const citationsPanel = mk('div', 'rv-panel hidden', 'citations');
+  citationsPanel.dataset.panel = 'citations';
+  console.log('[RCV] Citations panel - citationsFlat:', {
+    type: typeof citationsFlat,
+    length: citationsFlat?.length || 0,
+    isArray: Array.isArray(citationsFlat),
+    sample: citationsFlat?.length > 0 ? citationsFlat[0] : 'empty',
+  });
+  if (!citationsFlat || citationsFlat.length === 0) {
+    const empty = mk('div', 'rv-empty');
+    empty.textContent = 'No citations available for this case.';
+    citationsPanel.appendChild(empty);
+  } else {
+    citationsPanel.appendChild(buildResearchCitationsTable(citationsFlat));
+  }
+  
+  // --- PDF ---
+  const pdfPanel = mk('div', 'rv-panel hidden pdf-trigger', 'pdf');
+  pdfPanel.dataset.panel = 'pdf';
+  pdfPanel.dataset.caseId = caseData.id;
+  const pdfMsg = mk('div', 'rv-pdf-msg');
+  const pdfIcon = mk('span', 'ico ico-doc-lg');
+  pdfIcon.setAttribute('aria-hidden', 'true');
+  const pdfTxt = mk('span');
+  pdfTxt.textContent = 'PDF Viewer will open here…';
+  pdfMsg.appendChild(pdfIcon);
+  pdfMsg.appendChild(pdfTxt);
+  pdfPanel.appendChild(pdfMsg);
+  
+  // ========================================================================
+  // ASSEMBLY
+  // ========================================================================
+  [summaryPanel, factsPanel, judgementPanel, citationsPanel, pdfPanel].forEach(p => body.appendChild(p));
+  viewer.appendChild(header);
+  viewer.appendChild(tabBar);
+  viewer.appendChild(body);
+  
+  // ========================================================================
+  // TAB SWITCHING
+  // ========================================================================
+  tabBar.querySelectorAll('.rv-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabBar.querySelectorAll('.rv-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const tid = tab.dataset.tab;
+      body.querySelectorAll('.rv-panel').forEach(p => {
+        p.classList.toggle('hidden', p.dataset.panel !== tid);
+      });
+      if (tid === 'pdf') {
+        console.log('[RCV] PDF tab clicked, opening PDF panel for case:', caseData.id);
+        // FIX #10: Use openPDFPanel like Normal mode does, instead of inline rendering
+        openPDFPanel(caseData);
+      }
+    });
+  });
+  
+  // ========================================================================
+  // PARA REFERENCE INTERACTIVITY (NEW)
+  // ========================================================================
+  // Wire up para ref clicks to jump to Judgement tab
+  setTimeout(() => {
+    viewer.querySelectorAll('.brief-para-ref').forEach(ref => {
+      ref.title = `Click to view ${ref.textContent} in Judgement tab`;
+      ref.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Switch to Judgement tab
+        tabBar.querySelectorAll('.rv-tab').forEach(t => t.classList.remove('active'));
+        const judgTab = [...tabBar.querySelectorAll('.rv-tab')]
+          .find(t => t.dataset.tab === 'judgement');
+        if (judgTab) {
+          judgTab.classList.add('active');
+          body.querySelectorAll('.rv-panel').forEach(p => 
+            p.classList.toggle('hidden', p.dataset.panel !== 'judgement'));
+          // Try to scroll to the specific para
+          const paraNum = ref.textContent.replace(/Para\s+/, '').trim();
+          setTimeout(() => {
+            const paragraphEls = viewer.querySelectorAll('[data-para-no]');
+            for (let el of paragraphEls) {
+              if (el.dataset.paraNo === paraNum) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.style.background = 'rgba(0, 102, 204, 0.2)';
+                setTimeout(() => { el.style.background = ''; }, 2000);
+                break;
+              }
+            }
+          }, 100);
+        }
+      });
+    });
+  }, 100);
+  
+  return viewer;
+}
+
+function renderPDFInPanel(panel, caseData) {
+  /**Render PDF content directly in the research mode panel*/
+  const doc = mk('div', 'rv-pdf-document');
+  
+  const title = mk('p', 'rv-pdf-title');
+  title.textContent = caseData.name.toUpperCase();
+  
+  const sub = mk('p', 'rv-pdf-subtitle');
+  sub.textContent = `${caseData.court}  ·  ${caseData.year}  ·  ${caseData.citation}`;
+  
+  doc.appendChild(title);
+  doc.appendChild(sub);
+  
+  // Case paragraphs
+  if (caseData.paragraphs && caseData.paragraphs.length > 0) {
+    caseData.paragraphs.forEach((para, i) => {
+      const p = mk('p', 'rv-pdf-para');
+      p.dataset.paraId = para.id;
+      p.innerHTML = `<span class="rv-pdf-para-num">[${para.number || i + 1}]</span> <strong>[${para.type || 'para'}]</strong> ${para.text}`;
+      doc.appendChild(p);
+    });
+  } else {
+    const empty = mk('p');
+    empty.textContent = 'No paragraphs to display.';
+    empty.style.color = '#999';
+    doc.appendChild(empty);
+  }
+  
+  panel.appendChild(doc);
+}
+
+function buildCaseSummary(metadata, paragraphs, llmSummary = null) {
+  /**Build a summary from LLM-generated comprehensive brief, metadata fallback, or first paragraph*/
+  
+  console.log('[SUMMARY] 📝 Building case summary:');
+  console.log('  - llmSummary present:', !!llmSummary);
+  console.log('  - llmSummary type:', typeof llmSummary);
+  console.log('  - llmSummary length:', llmSummary?.length || 0);
+  
+  // Priority 1: Use LLM-generated comprehensive brief if available (NEW)
+  if (llmSummary && typeof llmSummary === 'string' && llmSummary.trim().length > 50) {
+    console.log('[SUMMARY] ✅ Using LLM-generated comprehensive brief');
+    return renderMarkdownBrief(llmSummary);
+  }
+  
+  // Priority 2: Metadata fallback with acts and outcome
+  if (metadata && metadata.case_name) {
+    console.log('[SUMMARY] ⚠️ Using metadata fallback brief');
+    return renderMetadataFallback(metadata, paragraphs);
+  }
+  
+  // Priority 3: First paragraph text fallback
+  if (paragraphs && paragraphs.length > 0) {
+    const text = (paragraphs[0].text || '').substring(0, 500);
+    return `<p style="color:#aaa;font-style:italic">⚠️ Full brief unavailable. First paragraph:</p><p>${text}</p>`;
+  }
+  
+  // Fallback: Generic summary
+  console.log('[SUMMARY] 🔄 Using generic fallback summary');
+  return '<p style="color:#666">Summary not available.</p>';
+}
+
+
+function renderMarkdownBrief(text) {
+  /**Render markdown-formatted brief with proper styling and interactive para refs*/
+  
+  let html = text
+    // Section headers: **HEADING** → styled uppercase headers
+    .replace(/^\*\*([A-Z][A-Z\s\/&—–-]+)\*\*\s*$/gm, 
+      '<div class="brief-section-header">$1</div>')
+    // Inline bold: **text** → <strong>
+    .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
+    // Para references like "Para 5", "Para 12" → highlighted clickable chips
+    .replace(/\b(Para\s+\d+)\b/g, 
+      '<span class="brief-para-ref" data-para="$1">$1</span>')
+    // Bullet lines: starts with - → list items
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    // Wrap consecutive <li> in <ul>
+    .replace(/(<li>.*?<\/li>\n?)+/g, m => `<ul class="brief-list">${m}</ul>`)
+    // Numbered lists (if any)
+    .replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>')
+    // Line breaks
+    .replace(/\n\n/g, '</p><p class="brief-para">')
+    .replace(/\n/g, '<br>');
+  
+  // Wrap final text in paragraph
+  if (!html.startsWith('<p')) {
+    html = `<p class="brief-para">${html}</p>`;
+  }
+  if (!html.endsWith('</p>')) {
+    html += '</p>';
+  }
+  
+  return html;
+}
+
+
+function renderMetadataFallback(metadata, paragraphs) {
+  /**Render a structured brief from DB metadata only (no LLM)*/
+  
+  const lines = [];
+  const name = metadata.case_name || 'Unknown';
+  const court = metadata.court || '';
+  const year = metadata.year || '';
+  const petitioner = metadata.petitioner || '';
+  const respondent = metadata.respondent || '';
+  const outcome = metadata.outcome_summary || '';
+  const acts = metadata.acts_referred || [];
+  
+  lines.push(`<strong>${name}</strong>`);
+  if (court || year) {
+    lines.push(`<strong>Court:</strong> ${court}  |  <strong>Year:</strong> ${year}`);
+  }
+  if (petitioner) {
+    lines.push(`<strong>Petitioner:</strong> ${petitioner}`);
+  }
+  if (respondent) {
+    lines.push(`<strong>Respondent:</strong> ${respondent}`);
+  }
+  if (acts && acts.length > 0) {
+    const actsStr = Array.isArray(acts) ? acts.slice(0, 5).join(', ') : acts;
+    lines.push(`<strong>Acts:</strong> ${actsStr}`);
+  }
+  if (outcome) {
+    lines.push(`<strong>Outcome:</strong> ${outcome}`);
+  }
+  
+  return `<div class="brief-metadata">${lines.map(l => `<p>${l}</p>`).join('')}</div>`;
+}
+
+function extractKeyFacts(paragraphs) {
+  /**Extract key facts from judgment paragraphs (limit to 5 key points)*/
+  if (!paragraphs || paragraphs.length === 0) return [];
+  
+  const facts = [];
+  paragraphs.slice(0, 5).forEach(p => {
+    const text = p.text || '';
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
+    if (sentences.length > 0) {
+      const firstSentence = sentences[0].trim();
+      if (firstSentence.length > 20 && firstSentence.length < 300) {
+        facts.push(firstSentence);
+      }
+    }
+  });
+  
+  return facts.length > 0 ? facts : ['Case details compiled from judgment.'];
+}
+
+function buildResearchCitationsTable(citations) {
+  /**Build citations table for research mode case viewer*/
+  const wrap = mk('div', 'rv-citations-table-wrap');
+  
+  if (!citations || citations.length === 0) {
+    const empty = mk('div', 'rv-empty');
+    empty.textContent = 'No citations found.';
+    wrap.appendChild(empty);
+    return wrap;
+  }
+  
+  const table = mk('table', 'rv-citations-table');
+  const thead = mk('thead');
+  const headerRow = mk('tr');
+  ['Citation', 'Type', 'Details'].forEach(col => {
+    const th = mk('th');
+    th.textContent = col;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+  
+  const tbody = mk('tbody');
+  citations.forEach(cit => {
+    const row = mk('tr');
+    
+    const citCell = mk('td');
+    citCell.textContent = cit.target_citation || cit.citation || 'Unknown';
+    citCell.style.fontWeight = '500';
+    citCell.style.color = '#0066cc';
+    
+    const typeCell = mk('td');
+    typeCell.textContent = cit.relationship?.charAt(0).toUpperCase() + (cit.relationship?.slice(1) || '');
+    
+    const confCell = mk('td');
+    confCell.style.fontSize = '0.85em';
+    confCell.style.color = '#999';
+    confCell.textContent = cit.confidence != null ? `${(cit.confidence * 100).toFixed(0)}%` : 'N/A';
+    
+    row.appendChild(citCell);
+    row.appendChild(typeCell);
+    row.appendChild(confCell);
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  
+  return wrap;
+}
+
 function buildCitationsPanel(c) {
   const wrap = mk('div', 'iv-citations');
   if (!c.cited_in?.length) {
@@ -674,8 +1500,12 @@ function buildCitationsPanel(c) {
     const card = mk('div', 'iv-citation-card');
     const top  = mk('div', 'iv-cit-card-top');
     const nm   = mk('div', 'iv-cit-case-name');  nm.textContent  = ref.name;
-    const yr   = mk('span', 'iv-cit-year-badge'); yr.textContent  = ref.year;
-    top.appendChild(nm); top.appendChild(yr);
+    top.appendChild(nm);
+    // Only show year if available
+    if (ref.year) {
+      const yr = mk('span', 'iv-cit-year-badge'); yr.textContent = ref.year;
+      top.appendChild(yr);
+    }
     const ct   = mk('div', 'iv-cit-court');    ct.textContent   = ref.court;
     const ci   = mk('div', 'iv-cit-citation'); ci.textContent   = ref.citation;
     const ctx  = mk('div', 'iv-cit-context');  ctx.innerHTML    = ref.context || '';
@@ -686,35 +1516,357 @@ function buildCitationsPanel(c) {
   return wrap;
 }
 
-function buildCaseResultsTable(cases) {
+function buildCitationsList(citations) {
+  const wrap = mk('div', 'citations-list');
+  
+  if (!citations || citations.length === 0) {
+    const empty = mk('div');
+    empty.textContent = 'No citations found for this case.';
+    empty.style.padding = '15px';
+    empty.style.color = '#999';
+    empty.style.fontStyle = 'italic';
+    wrap.appendChild(empty);
+    return wrap;
+  }
+  
+  const table = mk('table', 'citations-table');
+  table.style.width = '100%';
+  table.style.borderCollapse = 'collapse';
+  table.style.marginBottom = '20px';
+  
+  // Header
+  const thead = mk('thead');
+  const headerRow = mk('tr');
+  headerRow.style.borderBottom = '2px solid #0066cc';
+  ['Citation', 'Relationship', 'Confidence', 'Context'].forEach(col => {
+    const th = mk('th');
+    th.textContent = col;
+    th.style.textAlign = 'left';
+    th.style.padding = '10px';
+    th.style.paddingLeft = '0';
+    th.style.color = '#0066cc';
+    th.style.fontSize = '0.9em';
+    th.style.fontWeight = 'bold';
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+  
+  // Body
+  const tbody = mk('tbody');
+  citations.forEach((cit, idx) => {
+    const row = mk('tr');
+    row.style.borderBottom = '1px solid #ddd';
+    row.style.fontSize = '0.85em';
+    row.style.verticalAlign = 'top';
+    
+    // Citation (use target_citation or fallback)
+    const citCell = mk('td');
+    citCell.style.padding = '12px 10px';
+    citCell.style.paddingLeft = '0';
+    citCell.style.fontWeight = '500';
+    citCell.style.color = '#0066cc';
+    citCell.textContent = cit.target_citation || cit.citation || cit.case_name || 'Unknown';
+    row.appendChild(citCell);
+    
+    // Relationship
+    const relCell = mk('td');
+    relCell.style.padding = '12px 10px';
+    relCell.style.color = '#666';
+    const rel = cit.relationship || 'cited';
+    relCell.textContent = rel.charAt(0).toUpperCase() + rel.slice(1);
+    row.appendChild(relCell);
+    
+    // Confidence
+    const confCell = mk('td');
+    confCell.style.padding = '12px 10px';
+    confCell.style.color = '#999';
+    confCell.style.fontSize = '0.8em';
+    const conf = cit.confidence != null ? (cit.confidence * 100).toFixed(0) + '%' : 'N/A';
+    confCell.textContent = conf;
+    row.appendChild(confCell);
+    
+    // Context (brief snippet)
+    const ctxCell = mk('td');
+    ctxCell.style.padding = '12px 10px';
+    ctxCell.style.color = '#888';
+    ctxCell.style.fontSize = '0.8em';
+    ctxCell.style.maxWidth = '300px';
+    ctxCell.style.whiteSpace = 'nowrap';
+    ctxCell.style.overflow = 'hidden';
+    ctxCell.style.textOverflow = 'ellipsis';
+    const ctx = cit.context_sentence || '';
+    const shortCtx = ctx.substring(0, 60).replace(/\n/g, ' ');
+    ctxCell.textContent = shortCtx.length < ctx.length ? shortCtx + '...' : shortCtx;
+    ctxCell.title = ctx; // Show full context on hover
+    row.appendChild(ctxCell);
+    
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  
+  return wrap;
+}
+
+function buildCaseResultsTable(cases, skipLabel = false) {
   const wrap  = mk('div', 'case-table-wrap');
-  const label = mk('p', 'case-table-label');
-  label.textContent = `${cases.length} case${cases.length !== 1 ? 's' : ''} found`;
-  wrap.appendChild(label);
+  
+  // Skip label if this table is being used in a context that already shows result count
+  if (!skipLabel) {
+    const label = mk('p', 'case-table-label');
+    label.textContent = `${cases.length} case${cases.length !== 1 ? 's' : ''} found`;
+    wrap.appendChild(label);
+  }
 
   const table = mk('table', 'case-table');
-  table.innerHTML = `<thead><tr><th>Case Name</th><th>Court</th><th>Year</th><th></th></tr></thead>`;
+  const thead = mk('thead');
+  const theadTr = mk('tr');
+  ['Case Name', 'Court', 'Year', ''].forEach(col => {
+    const th = mk('th');
+    th.textContent = col;
+    theadTr.appendChild(th);
+  });
+  thead.appendChild(theadTr);
+  table.appendChild(thead);
+  
   const tbody = mk('tbody');
-  cases.forEach(c => {
+  cases.forEach((c, idx) => {
     const tr = mk('tr');
-    tr.innerHTML = `
-      <td class="case-name">${c.name}</td>
-      <td class="td-court">${c.court}</td>
-      <td class="case-year">${c.year}</td>
-      <td><button class="btn-open" data-id="${c.id}">Open Case ↓</button></td>
-    `;
+    
+    // Case name cell
+    const nameCell = mk('td');
+    nameCell.className = 'case-name';
+    nameCell.textContent = c.name;
+    tr.appendChild(nameCell);
+    
+    // Court cell
+    const courtCell = mk('td');
+    courtCell.className = 'td-court';
+    courtCell.textContent = c.court;
+    tr.appendChild(courtCell);
+    
+    // Year cell
+    const yearCell = mk('td');
+    yearCell.className = 'case-year';
+    yearCell.textContent = c.year;
+    tr.appendChild(yearCell);
+    
+    // Button cell
+    const btnCell = mk('td');
+    const btn = mk('button');
+    btn.className = 'btn-open';
+    btn.dataset.id = c.id;
+    btn.textContent = 'Open Case ↓';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log(`[BTN-CLICK] Button clicked for case ${idx}: ${c.id}`);
+      toggleInlineViewer(c.id, viewerHost, btn, false);
+    });
+    btnCell.appendChild(btn);
+    tr.appendChild(btnCell);
+    
     tbody.appendChild(tr);
   });
+  
   table.appendChild(tbody);
   wrap.appendChild(table);
 
   const viewerHost = mk('div', 'inline-viewer-host');
   wrap.appendChild(viewerHost);
-  wrap.querySelectorAll('.btn-open').forEach(btn =>
-    btn.addEventListener('click', () =>
-      toggleInlineViewer(btn.dataset.id, viewerHost, btn, false)
-    )
-  );
+  
+  console.log(`[CASE TABLE] Created table with ${cases.length} rows and click handlers`);
+  
+  return wrap;
+}
+
+function buildEnhancedCaseResultsTable(tabularResults, skipLabel = false) {
+  console.log('[ENHANCED-TABLE] Building enhanced table with', tabularResults.length, 'results');
+  
+  const wrap  = mk('div', 'case-table-wrap enhanced-table-wrap');
+  if (!skipLabel) {
+    const label = mk('p', 'case-table-label');
+    label.textContent = `${tabularResults.length} result${tabularResults.length !== 1 ? 's' : ''} found`;
+    wrap.appendChild(label);
+  }
+
+  const table = mk('table', 'case-table enhanced-case-table');
+  const thead = mk('thead');
+  const theadTr = mk('tr');
+  
+  // Enhanced columns: Index, Case Name, Court, Year, Type, Confidence Score, Actions
+  ['#', 'Case Name', 'Court', 'Year', 'Type', 'Confidence', 'Details'].forEach(col => {
+    const th = mk('th');
+    th.textContent = col;
+    theadTr.appendChild(th);
+  });
+  thead.appendChild(theadTr);
+  table.appendChild(thead);
+  
+  const tbody = mk('tbody');
+  tabularResults.forEach((row, idx) => {
+    const tr = mk('tr');
+    if (row.isPrimary) {
+      tr.className = 'tr-primary-match';  // Highlight primary match
+      tr.style.backgroundColor = '#fffacd';  // Light yellow
+      tr.style.fontWeight = 'bold';
+    }
+    
+    // Index
+    const indexCell = mk('td');
+    indexCell.textContent = row.index;
+    indexCell.style.textAlign = 'center';
+    tr.appendChild(indexCell);
+    
+    // Case Name
+    const nameCell = mk('td');
+    nameCell.className = 'case-name';
+    nameCell.textContent = row.caseName;
+    tr.appendChild(nameCell);
+    
+    // Court
+    const courtCell = mk('td');
+    courtCell.className = 'td-court';
+    courtCell.textContent = row.court || '—';
+    tr.appendChild(courtCell);
+    
+    // Year
+    const yearCell = mk('td');
+    yearCell.className = 'case-year';
+    yearCell.textContent = row.year || '—';
+    tr.appendChild(yearCell);
+    
+    // Type (judgment, citation, facts, etc.)
+    const typeCell = mk('td');
+    typeCell.textContent = row.paraType || 'General';
+    typeCell.style.fontSize = '0.9em';
+    typeCell.style.color = '#666';
+    tr.appendChild(typeCell);
+    
+    // Confidence Score
+    const scoreCell = mk('td');
+    scoreCell.textContent = `${(row.confidenceScore * 100).toFixed(1)}%`;
+    scoreCell.style.textAlign = 'center';
+    tr.appendChild(scoreCell);
+    
+    // Details button
+    const detailsCell = mk('td');
+    const detailsBtn = mk('button');
+    detailsBtn.className = 'btn-open';
+    detailsBtn.textContent = 'View ↓';
+    detailsBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (row.caseId) {
+        console.log('[DETAILS] Opening inline viewer for case:', row.caseId);
+        toggleInlineViewer(row.caseId, viewerHost, detailsBtn, false);
+      }
+    });
+    detailsCell.appendChild(detailsBtn);
+    tr.appendChild(detailsCell);
+    
+    tbody.appendChild(tr);
+  });
+  
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  const viewerHost = mk('div', 'inline-viewer-host');
+  wrap.appendChild(viewerHost);
+  
+  console.log('[ENHANCED-TABLE] ✅ Created enhanced table with', tabularResults.length, 'rows, PDF links, and type column');
+  
+  return wrap;
+}
+
+function buildJudgmentParagraphsReader(paragraphs, caseMetadata = {}) {
+  console.log('[JUDGMENT-READER] Building judgment reader with', paragraphs.length, 'paragraphs');
+  
+  // Main wrapper
+  const wrap = mk('div', 'judgment-reader-wrapper');
+  
+  // Paragraphs reader
+  const reader = mk('div', 'judgment-paragraphs-container');
+  reader.style.backgroundColor = '#0a0a0a';
+  reader.style.border = '1px solid #222';
+  reader.style.borderRadius = '8px';
+  reader.style.padding = '20px';
+  reader.style.marginTop = '15px';
+  reader.style.lineHeight = '1.8';
+  reader.style.fontSize = '0.95em';
+  
+  if (paragraphs.length === 0) {
+    const empty = mk('p');
+    empty.textContent = 'No judgment paragraphs available';
+    empty.style.color = '#666';
+    reader.appendChild(empty);
+  } else {
+    paragraphs.forEach((para, idx) => {
+      const paraBlock = mk('div', 'judgment-para-block');
+      paraBlock.style.marginBottom = '20px';
+      paraBlock.style.paddingBottom = '15px';
+      paraBlock.style.borderBottom = 'none';
+      
+      // Add data attribute for para ref jumps (brief interactivity)
+      paraBlock.dataset.paraNo = String(para.paraNo || idx + 1);
+      
+      // Paragraph header (number + page + type)
+      const paraHeader = mk('div', 'judgment-para-header');
+      paraHeader.style.display = 'flex';
+      paraHeader.style.justifyContent = 'space-between';
+      paraHeader.style.alignItems = 'center';
+      paraHeader.style.marginBottom = '8px';
+      paraHeader.style.fontSize = '0.8em';
+      paraHeader.style.color = '#0066cc';
+      
+      const paraNum = mk('span');
+      paraNum.textContent = `Para ${para.paraNo || idx + 1}`;
+      paraHeader.appendChild(paraNum);
+      
+      const paraInfo = mk('span');
+      paraInfo.style.display = 'flex';
+      paraInfo.style.gap = '10px';
+      paraInfo.style.color = '#666';
+      
+      if (para.pageNo) {
+        const page = mk('span');
+        page.textContent = `Page ${para.pageNo}`;
+        paraInfo.appendChild(page);
+      }
+      if (para.paraType) {
+        const type = mk('span');
+        type.textContent = `[${para.paraType}]`;
+        type.style.color = '#0066cc';
+        paraInfo.appendChild(type);
+      }
+      if (para.quality) {
+        const quality = mk('span');
+        const qualityPercent = Math.round((para.quality || 0) * 100);
+        quality.textContent = `${qualityPercent}% quality`;
+        const qualityColor = qualityPercent > 70 ? '#00cc00' : qualityPercent > 40 ? '#ffaa00' : '#cc0000';
+        quality.style.color = qualityColor;
+        quality.style.fontWeight = 'bold';
+        paraInfo.appendChild(quality);
+      }
+      
+      paraHeader.appendChild(paraInfo);
+      paraBlock.appendChild(paraHeader);
+      
+      // Paragraph text
+      const paraText = mk('p', 'judgment-para-text');
+      paraText.textContent = para.text;
+      paraText.style.color = '#ddd';
+      paraText.style.margin = '0';
+      paraText.style.whiteSpace = 'pre-wrap';
+      paraText.style.wordWrap = 'break-word';
+      paraBlock.appendChild(paraText);
+      
+      reader.appendChild(paraBlock);
+    });
+  }
+  
+  wrap.appendChild(reader);
   return wrap;
 }
 
