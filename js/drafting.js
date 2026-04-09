@@ -10,12 +10,21 @@ const MadhavDrafting = (() => {
   // ── State ──────────────────────────────────────────────
   let currentDraft = "";
   let isGenerating = false;
+  let draftHistory = [];  // [{ timestamp, draft, action }]
 
   const TEMPLATES = {
     legal_notice:    { label: "Legal Notice",     icon: "📋" },
     petition:        { label: "Writ Petition",     icon: "⚖️" },
     bail_application:{ label: "Bail Application",  icon: "🔓" },
     affidavit:       { label: "Affidavit",         icon: "📜" },
+    written_statement: { label: "Written Statement", icon: "📝" },
+    reply_to_plaint: { label: "Reply to Plaint",   icon: "💬" },
+    counter_claim:   { label: "Counter-claim",     icon: "⚔️" },
+    contracts:       { label: "Contracts",         icon: "📑" },
+    petition_revision: { label: "Petition (Rev/Review)", icon: "🔄" },
+    motion:          { label: "Motion",            icon: "🎯" },
+    injunction:      { label: "Injunction",        icon: "🚫" },
+    appeal:          { label: "Appeal",            icon: "📤" },
   };
 
   // ── HTML Template ──────────────────────────────────────
@@ -79,6 +88,32 @@ const MadhavDrafting = (() => {
         </div>
       </div>
 
+      <!-- Language selector -->
+      <div style="margin-bottom:0.7rem;">
+        <label for="md-language" style="display:block;font-size:0.72rem;font-weight:600;color:#6b7280;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.04em;">Language</label>
+        <select id="md-language" style="width:100%;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:0.82rem;outline:none;">
+          <option value="english">English</option>
+          <option value="hindi">हिन्दी (Hindi)</option>
+          <option value="marathi">मराठी (Marathi)</option>
+          <option value="tamil">தமிழ் (Tamil)</option>
+        </select>
+      </div>
+
+      <!-- State/Jurisdiction selector -->
+      <div style="margin-bottom:0.7rem;">
+        <label for="md-state" style="display:block;font-size:0.72rem;font-weight:600;color:#6b7280;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.04em;">State/Jurisdiction</label>
+        <select id="md-state" style="width:100%;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:0.82rem;outline:none;">
+          <option value="">Default (Pan-India)</option>
+          <option value="maharashtra">Maharashtra (Bombay HC)</option>
+          <option value="delhi">Delhi (Delhi HC)</option>
+          <option value="karnataka">Karnataka (Karnataka HC)</option>
+          <option value="tamil_nadu">Tamil Nadu (Madras HC)</option>
+          <option value="uttar_pradesh">Uttar Pradesh (Allahabad HC)</option>
+          <option value="west_bengal">West Bengal (Calcutta HC)</option>
+          <option value="supreme_court">Supreme Court of India</option>
+        </select>
+      </div>
+
       <hr style="border:none;border-top:1px solid #f3f4f6;margin:1rem 0;">
 
       <!-- Form fields -->
@@ -126,6 +161,31 @@ const MadhavDrafting = (() => {
           ${["Make more aggressive","Add verification clause","Simplify language","Add more case law","Make concise"].map(s =>
             `<button class="md-quick-refine" style="font-size:0.72rem;padding:3px 10px;border:1px solid #d1d5db;border-radius:20px;background:#fff;cursor:pointer;color:#374151;">${s}</button>`
           ).join("")}
+        </div>
+      </div>
+
+      <!-- Refine bar (shown after first draft) -->
+      <div id="md-refine-bar" style="display:none;padding:0.75rem 1rem;border-top:1px solid #f3f4f6;background:#f9fafb;flex-shrink:0;border-top:1px solid #f3f4f6;">
+        <div style="display:flex;gap:6px;">
+          <input id="md-refine-input" type="text" placeholder='Refine: e.g. "make more aggressive" or "add Section 138 NI Act"'
+            style="flex:1;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:0.82rem;outline:none;">
+          <button id="md-refine-btn"
+            style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+            Refine ✨
+          </button>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+          ${["Make more aggressive","Add verification clause","Simplify language","Add more case law","Make concise"].map(s =>
+            `<button class="md-quick-refine" style="font-size:0.72rem;padding:3px 10px;border:1px solid #d1d5db;border-radius:20px;background:#fff;cursor:pointer;color:#374151;">${s}</button>`
+          ).join("")}
+        </div>
+      </div>
+
+      <!-- Version history bar (shown when multiple versions exist) -->
+      <div id="md-history-bar" style="display:none;padding:0.75rem 1rem;border-top:1px solid #f3f4f6;background:#f9fafb;flex-shrink:0;overflow-x:auto;">
+        <p style="font-size:0.7rem;font-weight:600;color:#6b7280;margin:0 0 6px 0;text-transform:uppercase;">Version History</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <!-- History chips dynamically added here -->
         </div>
       </div>
     </div>
@@ -180,24 +240,45 @@ const MadhavDrafting = (() => {
     showStatus(state);
   }
 
-  // ── PDF Export ─────────────────────────────────────────
+  // ── PDF Export (jsPDF) ────────────────────────────────
   function exportPDF() {
     if (!currentDraft) return alert("Generate a draft first.");
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
     const title = document.getElementById("md-doc-title")?.textContent || "Legal Draft";
-    const win = window.open("", "_blank");
-    win.document.write(`<!DOCTYPE html><html><head>
-      <title>${title}</title>
-      <style>
-        body{font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;margin:2.5cm;color:#000;}
-        h1{font-size:14pt;text-align:center;margin-bottom:1.5rem;}
-        pre{white-space:pre-wrap;font-family:'Times New Roman',serif;font-size:12pt;}
-        @media print{body{margin:2cm;}}
-      </style></head><body>
-      <h1>${title}</h1>
-      <pre>${currentDraft.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>
-      <script>window.onload=()=>{window.print();}<\/script>
-    </body></html>`);
-    win.document.close();
+    const margin = 20;
+    const pageWidth = doc.internal.pageSize.getWidth() - margin * 2;
+    
+    // Title
+    doc.setFont("times", "bold");
+    doc.setFontSize(13);
+    doc.text(title, doc.internal.pageSize.getWidth() / 2, 25, { align: "center" });
+    
+    // Body text
+    doc.setFont("times", "normal");
+    doc.setFontSize(11);
+    
+    const lines = doc.splitTextToSize(currentDraft, pageWidth);
+    let y = 35;
+    
+    lines.forEach(line => {
+      if (y > 275) {
+        doc.addPage();
+        y = 20;
+      }
+      // Bold lines that are all-caps (section headings)
+      if (line === line.toUpperCase() && line.trim().length > 3) {
+        doc.setFont("times", "bold");
+      } else {
+        doc.setFont("times", "normal");
+      }
+      doc.text(line, margin, y);
+      y += 6;
+    });
+    
+    const filename = title.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_") + ".pdf";
+    doc.save(filename);
   }
 
   // ── Stream draft from API ──────────────────────────────
@@ -250,6 +331,14 @@ const MadhavDrafting = (() => {
       if (cursor) cursor.remove();
       output.innerHTML = currentDraft.replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
+      // Track in history
+      draftHistory.push({
+        timestamp: new Date().toLocaleTimeString(),
+        draft: currentDraft,
+        action: endpoint.includes("refine") ? "Refined" : "Generated"
+      });
+      renderHistoryChips();
+
       // Show refine bar
       document.getElementById("md-refine-bar").style.display = "block";
 
@@ -290,6 +379,8 @@ const MadhavDrafting = (() => {
       case_citations: val("md-citations"),
       facts:          val("md-facts"),
       relief_sought:  val("md-relief"),
+      language:       document.getElementById("md-language")?.value || "english",
+      state:          document.getElementById("md-state")?.value || "",
     });
   }
 
@@ -302,6 +393,49 @@ const MadhavDrafting = (() => {
     if (!instruction) return alert("Enter a refinement instruction.");
     setGenerating(true);
     streamDraft("http://localhost:8000/api/draft/refine", { draft: currentDraft, instruction });
+  }
+
+  // ── Version History ────────────────────────────────────
+  function renderHistoryChips() {
+    const bar = document.getElementById("md-history-bar");
+    if (!bar || draftHistory.length < 2) return;
+    
+    bar.style.display = "flex";
+    const chipContainer = bar.querySelector("div[style*='display:flex'][style*='gap:6px']");
+    chipContainer.innerHTML = draftHistory.map((h, i) =>
+      `<button onclick="MadhavDrafting.restoreVersion(${i})" 
+        style="font-size:0.7rem;padding:2px 8px;border:1px solid #d1d5db;border-radius:20px;background:#fff;cursor:pointer;color:#374151;">
+        v${i + 1} — ${h.action} ${h.timestamp}
+      </button>`
+    ).join("");
+  }
+
+  function restoreVersion(versionIndex) {
+    if (draftHistory[versionIndex]) {
+      currentDraft = draftHistory[versionIndex].draft;
+      const output = document.getElementById("md-output");
+      if (output) {
+        output.innerHTML = currentDraft.replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      }
+    }
+  }
+
+  // ── Auto-fill from Case ────────────────────────────────
+  function prefillFromCase(caseData) {
+    const setVal = (id, val) => {
+      const el = document.getElementById(id);
+      if (el && val) el.value = val;
+    };
+    setVal("md-party-name",   caseData.party_name);
+    setVal("md-opp-party",    caseData.opposite_party);
+    setVal("md-court",        caseData.court);
+    setVal("md-jurisdiction", caseData.jurisdiction);
+    setVal("md-acts",         caseData.act_sections);
+    setVal("md-citations",    caseData.case_citations);
+    setVal("md-facts",        caseData.facts_hint);
+    
+    // Switch to drafting tab if applicable
+    if (typeof switchTab === "function") switchTab("drafting");
   }
 
   // ── Init ───────────────────────────────────────────────
@@ -366,5 +500,5 @@ const MadhavDrafting = (() => {
     });
   }
 
-  return { init };
+  return { init, prefillFromCase, restoreVersion };
 })();

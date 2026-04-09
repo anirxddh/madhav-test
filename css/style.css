@@ -659,9 +659,14 @@ a { text-decoration: none; color: inherit; }
 .iv-chip { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; border-radius: var(--r-pill); padding: 3px 10px; }
 .iv-chip--court { background: rgba(100,130,220,0.15); border: 1px solid rgba(100,130,220,0.3); color: rgba(180,200,255,0.95); }
 .iv-chip--year { background: var(--glass-sm); border: 1px solid var(--border-mid); color: var(--c-mid); font-family: var(--f-mono); }
-.iv-title { font-family: var(--f-serif); font-size: 19px; font-weight: 700; color: var(--c-hi); margin-bottom: 4px; line-height: 1.25; padding-right: 36px; letter-spacing: -0.2px; }
+.iv-title { font-family: var(--f-serif); font-size: 19px; font-weight: 700; color: var(--c-hi); margin-bottom: 4px; line-height: 1.25; letter-spacing: -0.2px; }
 .iv-citation { font-family: var(--f-mono); font-size: 12px; color: var(--c-mid); letter-spacing: 0.3px; }
-.iv-close { position: absolute; top: 16px; right: 16px; width: 28px; height: 28px; border-radius: 50%; background: var(--glass-sm); border: 1px solid var(--border-mid); color: var(--c-mid); display: flex; align-items: center; justify-content: center; transition: all var(--fast); font-size: 18px; line-height: 1; }
+.iv-header-actions { position: absolute; top: 16px; right: 16px; display: flex; align-items: center; gap: 8px; }
+.iv-action-btn { padding: 8px 12px; border-radius: var(--r-md); background: var(--glass-sm); border: 1px solid var(--border-mid); color: var(--c-mid); font-size: 13px; font-weight: 500; cursor: pointer; transition: all var(--fast); white-space: nowrap; }
+.iv-action-btn:hover { background: var(--glass-lg); border-color: var(--border-hi); color: var(--c-hi); }
+.iv-draft-btn { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.3); color: rgba(150,200,255,0.95); }
+.iv-draft-btn:hover { background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.5); color: rgba(180,220,255,1); }
+.iv-close { position: static; width: 28px; height: 28px; border-radius: 50%; background: var(--glass-sm); border: 1px solid var(--border-mid); color: var(--c-mid); display: flex; align-items: center; justify-content: center; transition: all var(--fast); font-size: 18px; line-height: 1; padding: 0; }
 .iv-close:hover { background: var(--glass-lg); border-color: var(--border-hi); color: var(--c-hi); }
 
 .iv-tabs { display: flex; padding: 0 20px; border-bottom: 1px solid var(--border); background: rgba(18,18,24,0.7); gap: 2px; }
@@ -1195,7 +1200,81 @@ a { text-decoration: none; color: inherit; }
   padding: 12px;
   background: rgba(0, 0, 0, 0.2);
   border-radius: var(--r);
-  border-left: 3px solid #0066cc;
+}
+
+/* ── PAGINATION CONTROLS ────────────────────────────────────── */
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.pagination-btn {
+  padding: 8px 12px;
+  background: var(--glass-md);
+  border: 1px solid var(--border);
+  color: var(--c-mid);
+  cursor: pointer;
+  border-radius: calc(var(--r) / 2);
+  font-size: 0.95em;
+  transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--glass-lg);
+  color: var(--c-hi);
+  border-color: var(--border-mid);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination-pages {
+  display: flex;
+  gap: 4px;
+}
+
+.pagination-page-btn {
+  padding: 6px 10px;
+  background: var(--glass-xs);
+  border: 1px solid var(--border);
+  color: var(--c-mid);
+  cursor: pointer;
+  border-radius: calc(var(--r) / 2);
+  font-size: 0.9em;
+  min-width: 35px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.pagination-page-btn:hover {
+  background: var(--glass-md);
+  color: var(--c-hi);
+  border-color: var(--border-mid);
+}
+
+.pagination-page-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-border);
+  font-weight: bold;
+}
+
+/* ── BUBBLE PAGINATION (in-chat pagination) ────────────────── */
+.bubble-pagination-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 15px;
+  padding-top: 12px;
+  flex-wrap: wrap;
 }
 
 .brief-metadata p {

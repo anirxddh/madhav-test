@@ -170,6 +170,15 @@ const API = {
       sample: citationsFlat.length > 0 ? citationsFlat[0].target_citation : 'empty',
     });
     
+    // ✨ STUDY MODE: Check if backend returned sections (study output format)
+    const sections = data.sections || null;
+    if (sections) {
+      console.log('[API] 🎓 STUDY MODE detected - sections found:', {
+        sectionsCount: sections.length,
+        firstSectionType: sections[0]?.output_type || 'unknown',
+      });
+    }
+    
     const result = {
       text:                  answerText,
       cases:                 cases,
@@ -185,14 +194,16 @@ const API = {
       totalResults:          data.total_results,
       caseMetadata:          data.case_metadata,
       caseSummary:           data.case_summary,  // ✨ LLM-generated case summary for full_case
+      sections:              sections,            // ✨ STUDY MODE: Pass through sections array
     };
     
-    console.log('[API] 📊 Research mode response mapping:');
+    console.log('[API] 📊 Response mapping:');
+    console.log('  Mode:', sections ? '🎓 STUDY MODE' : '📊 Research Mode');
     console.log('  outputType:', result.outputType);
     console.log('  caseMetadata.case_name:', result.caseMetadata?.case_name);
     console.log('  caseSummary present:', !!result.caseSummary);
-    console.log('  caseSummary length:', result.caseSummary?.length || 0);
-    console.log('  caseSummary content:', result.caseSummary?.substring(0, 100) || 'NONE');
+    console.log('  sections present:', !!result.sections);
+    if (sections) console.log('  sections count:', sections.length);
     
     console.log('[API] Final return object:', {
       hasText: !!result.text,

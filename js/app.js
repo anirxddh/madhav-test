@@ -30,6 +30,9 @@ const State = {
   pspCaseId:           null,       // case currently loaded in PDF side panel
   tokens:              [],         // { type, label, value }
   suggestionFocusIdx:  -1,
+  allSearchResults:    [],         // All results from search (for pagination)
+  currentPage:         1,          // Current pagination page
+  itemsPerPage:        15,         // Items per page
 };
 
 
@@ -178,61 +181,70 @@ function renderAIResponse(data) {
   });
   
   console.log('[RENDER] API Response received:', {
+    hasSections: !!data.sections,
+    sectionsCount: data.sections?.length || 0,
+    firstSectionType: data.sections?.[0]?.output_type || 'N/A',
     hasTabularResults: !!data.tabularResults,
     tabularResultsCount: data.tabularResults?.length || 0,
     intent: data.intent,
     isUnique: data.isUnique,
     hasCompleteExplanation: !!data.completeExplanation,
     citationsFlatCount: data.citationsFlat?.length || 0,
-    hasSections: !!data.sections,
   });
   
-  if (data.sections) {
+  // ✨ STUDY MODE: Check for sections FIRST (before normal rendering)
+  if (data.sections && data.sections.length > 0) {
+    console.log('[RENDER] 🎓 STUDY MODE DETECTED - Rendering study output');
+    console.log('[RENDER]    Sections:', data.sections.length);
+    console.log('[RENDER]    Type:', data.sections[0].output_type);
     appendChatMessage('ai', null, 'study', [], data.sections);
-  } else {
-    // Verify what we're passing
-    console.log('[RENDER] About to call appendChatMessage with parameters:', {
-      tabularResults_exists: !!data.tabularResults,
-      tabularResults_isArray: Array.isArray(data.tabularResults),
-      tabularResults_count: (data.tabularResults || []).length,
-      cases_count: (data.cases || []).length,
-      intent: data.intent,
-      isUnique: data.isUnique,
-      outputType: data.outputType,
-      citationsFlat_count: (data.citationsFlat || []).length,
-      citationsFlat_type: typeof data.citationsFlat,
-      citationsFlat_isArray: Array.isArray(data.citationsFlat),
-      completeExplanation_length: data.completeExplanation?.length || 0,
-      caseSummary_present: !!data.caseSummary,
-      caseSummary_type: typeof data.caseSummary,
-      caseSummary_length: data.caseSummary?.length || 0,
-    });
-    
-    // Pass all new fields including judgmentParagraphs, caseMetadata, citationTree, citationsFlat, caseSummary
-    console.log('[RENDER-DEBUG] ✅ Passing caseSummary to appendChatMessage:', {
-      caseSummary_value: data.caseSummary ? data.caseSummary.substring(0, 50) : 'NULL',
-      caseSummary_length: data.caseSummary?.length || 0,
-    });
-    
-    // FIXED: Don't use spread operator - call directly with all parameters in correct order
-    appendChatMessage(
-      'ai',                                    // 1: role
-      data.text,                               // 2: text
-      State.submode,                           // 3: submode
-      data.cases || [],                        // 4: cases
-      null,                                    // 5: studySections
-      data.tabularResults || [],               // 6: tabularResults
-      data.completeExplanation,                // 7: completeExplanation
-      data.intent,                             // 8: intent
-      data.isUnique,                           // 9: isUnique
-      data.outputType,                         // 10: outputType
-      data.judgmentParagraphs || [],           // 11: judgmentParagraphs
-      data.caseMetadata || {},                 // 12: caseMetadata
-      data.citationTree || null,               // 13: citationTree
-      data.citationsFlat || [],                // 14: citationsFlat
-      data.caseSummary || null                 // 15: caseSummary
-    );
+    return;  // ← IMPORTANT: Exit early to prevent table rendering
   }
+  
+  console.log('[RENDER] Rendering in normal/research mode');
+  
+  // Verify what we're passing
+  console.log('[RENDER] About to call appendChatMessage with parameters:', {
+    tabularResults_exists: !!data.tabularResults,
+    tabularResults_isArray: Array.isArray(data.tabularResults),
+    tabularResults_count: (data.tabularResults || []).length,
+    cases_count: (data.cases || []).length,
+    intent: data.intent,
+    isUnique: data.isUnique,
+    outputType: data.outputType,
+    citationsFlat_count: (data.citationsFlat || []).length,
+    citationsFlat_type: typeof data.citationsFlat,
+    citationsFlat_isArray: Array.isArray(data.citationsFlat),
+    completeExplanation_length: data.completeExplanation?.length || 0,
+    caseSummary_present: !!data.caseSummary,
+    caseSummary_type: typeof data.caseSummary,
+    caseSummary_length: data.caseSummary?.length || 0,
+  });
+  
+  // Pass all new fields including judgmentParagraphs, caseMetadata, citationTree, citationsFlat, caseSummary
+  console.log('[RENDER-DEBUG] ✅ Passing caseSummary to appendChatMessage:', {
+    caseSummary_value: data.caseSummary ? data.caseSummary.substring(0, 50) : 'NULL',
+    caseSummary_length: data.caseSummary?.length || 0,
+  });
+  
+  // FIXED: Don't use spread operator - call directly with all parameters in correct order
+  appendChatMessage(
+    'ai',                                    // 1: role
+    data.text,                               // 2: text
+    State.submode,                           // 3: submode
+    data.cases || [],                        // 4: cases
+    null,                                    // 5: studySections
+    data.tabularResults || [],               // 6: tabularResults
+    data.completeExplanation,                // 7: completeExplanation
+    data.intent,                             // 8: intent
+    data.isUnique,                           // 9: isUnique
+    data.outputType,                         // 10: outputType
+    data.judgmentParagraphs || [],           // 11: judgmentParagraphs
+    data.caseMetadata || {},                 // 12: caseMetadata
+    data.citationTree || null,               // 13: citationTree
+    data.citationsFlat || [],                // 14: citationsFlat
+    data.caseSummary || null                 // 15: caseSummary
+  );
 }
 
 function appendChatMessage(role, text = null, submode = null, cases = [], studySections = null, 
@@ -682,10 +694,38 @@ function renderSearchResults(cases) {
     return;
   }
 
+  // Store all results and reset to page 1
+  State.allSearchResults = cases;
+  State.currentPage = 1;
+
+  // Render the current page
+  renderCurrentPage();
+
+  // Show pagination if there's more than one page
+  const totalPages = Math.ceil(cases.length / State.itemsPerPage);
+  if (totalPages > 1) {
+    renderPaginationControls(totalPages);
+    $('pagination-controls').classList.remove('hidden');
+  } else {
+    $('pagination-controls').classList.add('hidden');
+  }
+
+  $('results-count').textContent = `${cases.length} case${cases.length !== 1 ? 's' : ''} found`;
+  $('results-header').classList.remove('hidden');
+  $('results-table-wrap').classList.remove('hidden');
+}
+
+function renderCurrentPage() {
+  const cases = State.allSearchResults;
+  const start = (State.currentPage - 1) * State.itemsPerPage;
+  const end = start + State.itemsPerPage;
+  const pageCases = cases.slice(start, end);
+
   const tbody = $('results-tbody');
   tbody.innerHTML = '';
 
-  cases.forEach((c, i) => {
+  pageCases.forEach((c, i) => {
+    const actualIndex = start + i + 1;  // For display as row number
     const score  = c.authority_score || 50;
     const tier   = score >= 85 ? 'high' : score >= 65 ? 'medium' : 'low';
     const arrow  = score >= 85 ? '↑'    : score >= 65 ? '→'      : '↓';
@@ -693,7 +733,7 @@ function renderSearchResults(cases) {
 
     const tr = mk('tr');
     tr.innerHTML = `
-      <td>${i + 1}</td>
+      <td>${actualIndex}</td>
       <td class="td-case-name">${c.name}</td>
       <td class="td-court">${c.court}</td>
       <td class="td-year">${c.year}</td>
@@ -716,10 +756,56 @@ function renderSearchResults(cases) {
       toggleInlineViewer(btn.dataset.id, $('trad-inline-viewer'), btn, true)
     )
   );
+}
 
-  $('results-count').textContent = `${cases.length} case${cases.length !== 1 ? 's' : ''} found`;
-  $('results-header').classList.remove('hidden');
-  $('results-table-wrap').classList.remove('hidden');
+function renderPaginationControls(totalPages) {
+  const pagesDiv = $('pagination-pages');
+  pagesDiv.innerHTML = '';
+
+  // Show nearby page numbers (current ± 2)
+  const start = Math.max(1, State.currentPage - 2);
+  const end = Math.min(totalPages, State.currentPage + 2);
+
+  for (let p = start; p <= end; p++) {
+    const btn = mk('button', 'pagination-page-btn');
+    btn.textContent = p;
+    if (p === State.currentPage) {
+      btn.classList.add('active');
+      btn.textContent = `{${p}}`;  // Show current page with braces
+    }
+    btn.addEventListener('click', () => goToPage(p));
+    pagesDiv.appendChild(btn);
+  }
+
+  // Update navigation button states
+  $('btn-first-page').disabled = State.currentPage === 1;
+  $('btn-prev-page').disabled = State.currentPage === 1;
+  $('btn-next-page').disabled = State.currentPage === totalPages;
+  $('btn-last-page').disabled = State.currentPage === totalPages;
+
+  // Attach navigation event listeners (only once)
+  if (!pagesDiv.dataset.eventsBound) {
+    $('btn-first-page').addEventListener('click', () => goToPage(1));
+    $('btn-prev-page').addEventListener('click', () => goToPage(State.currentPage - 1));
+    $('btn-next-page').addEventListener('click', () => goToPage(State.currentPage + 1));
+    $('btn-last-page').addEventListener('click', () => goToPage(totalPages));
+    pagesDiv.dataset.eventsBound = 'true';
+  }
+}
+
+function goToPage(pageNum) {
+  const totalPages = Math.ceil(State.allSearchResults.length / State.itemsPerPage);
+  if (pageNum < 1 || pageNum > totalPages) return;
+
+  State.currentPage = pageNum;
+  renderCurrentPage();
+  renderPaginationControls(totalPages);
+
+  // Scroll to table top
+  const tableWrap = $('results-table-wrap');
+  if (tableWrap) {
+    tableWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function renderResultExplanation(count) {
@@ -742,13 +828,15 @@ function resetSearch() {
     const el = $(id); if (el) el.value = '';
   });
   State.tokens = [];
+  State.allSearchResults = [];
+  State.currentPage = 1;
   $('token-raw-input').value = '';
   renderTokenPills();
   syncActiveFilterBar();
   closePDFPanel();
   $('trad-inline-viewer').innerHTML = '';
   State.openViewers.clear();
-  ['results-table-wrap','results-header','active-filters-bar','result-explanation']
+  ['results-table-wrap','results-header','active-filters-bar','result-explanation','pagination-controls']
     .forEach(id => $(id).classList.add('hidden'));
   $('results-empty').classList.remove('hidden');
   $('empty-title').textContent = 'Search the legal database';
@@ -991,11 +1079,21 @@ function buildCaseViewer(c) {
   chips.appendChild(cChip); chips.appendChild(yChip);
   const title    = mk('h2', 'iv-title');    title.textContent    = c.name;
   const citation = mk('p',  'iv-citation'); citation.textContent = c.citation;
+  
+  // Header actions (right side)
+  const headerActions = mk('div', 'iv-header-actions');
+  const draftBtn = mk('button', 'iv-action-btn iv-draft-btn');
+  draftBtn.innerHTML = '✍️ Draft';
+  draftBtn.title = 'Generate a legal document from this case';
+  draftBtn.addEventListener('click', () => draftFromThisCase(c));
+  
   const closeBtn = mk('button', 'iv-close');
   closeBtn.setAttribute('aria-label', 'Close case viewer');
   closeBtn.innerHTML = '<span class="ico ico-close" aria-hidden="true">×</span>';
+  
+  headerActions.appendChild(draftBtn); headerActions.appendChild(closeBtn);
   header.appendChild(chips); header.appendChild(title);
-  header.appendChild(citation); header.appendChild(closeBtn);
+  header.appendChild(citation); header.appendChild(headerActions);
 
   // Tab bar
   const tabBar  = mk('div', 'iv-tabs');
@@ -1614,7 +1712,8 @@ function buildCitationsList(citations) {
 }
 
 function buildCaseResultsTable(cases, skipLabel = false) {
-  const wrap  = mk('div', 'case-table-wrap');
+  const ITEMS_PER_PAGE = 15;
+  const wrap = mk('div', 'case-table-wrap');
   
   // Skip label if this table is being used in a context that already shows result count
   if (!skipLabel) {
@@ -1622,6 +1721,14 @@ function buildCaseResultsTable(cases, skipLabel = false) {
     label.textContent = `${cases.length} case${cases.length !== 1 ? 's' : ''} found`;
     wrap.appendChild(label);
   }
+
+  // ===== PAGINATION STATE FOR THIS BUBBLE =====
+  const bubbleState = {
+    allCases: cases,
+    currentPage: 1,
+    itemsPerPage: ITEMS_PER_PAGE,
+    totalPages: Math.ceil(cases.length / ITEMS_PER_PAGE)
+  };
 
   const table = mk('table', 'case-table');
   const thead = mk('thead');
@@ -1635,52 +1742,149 @@ function buildCaseResultsTable(cases, skipLabel = false) {
   table.appendChild(thead);
   
   const tbody = mk('tbody');
-  cases.forEach((c, idx) => {
-    const tr = mk('tr');
-    
-    // Case name cell
-    const nameCell = mk('td');
-    nameCell.className = 'case-name';
-    nameCell.textContent = c.name;
-    tr.appendChild(nameCell);
-    
-    // Court cell
-    const courtCell = mk('td');
-    courtCell.className = 'td-court';
-    courtCell.textContent = c.court;
-    tr.appendChild(courtCell);
-    
-    // Year cell
-    const yearCell = mk('td');
-    yearCell.className = 'case-year';
-    yearCell.textContent = c.year;
-    tr.appendChild(yearCell);
-    
-    // Button cell
-    const btnCell = mk('td');
-    const btn = mk('button');
-    btn.className = 'btn-open';
-    btn.dataset.id = c.id;
-    btn.textContent = 'Open Case ↓';
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log(`[BTN-CLICK] Button clicked for case ${idx}: ${c.id}`);
-      toggleInlineViewer(c.id, viewerHost, btn, false);
+  const viewerHost = mk('div', 'inline-viewer-host');
+
+  // ===== FUNCTION: Render current page of results =====
+  function renderBubblePage() {
+    tbody.innerHTML = '';
+    const start = (bubbleState.currentPage - 1) * bubbleState.itemsPerPage;
+    const end = start + bubbleState.itemsPerPage;
+    const pageCases = bubbleState.allCases.slice(start, end);
+
+    pageCases.forEach((c, i) => {
+      const tr = mk('tr');
+      
+      // Case name cell
+      const nameCell = mk('td');
+      nameCell.className = 'case-name';
+      nameCell.textContent = c.name;
+      tr.appendChild(nameCell);
+      
+      // Court cell
+      const courtCell = mk('td');
+      courtCell.className = 'td-court';
+      courtCell.textContent = c.court;
+      tr.appendChild(courtCell);
+      
+      // Year cell
+      const yearCell = mk('td');
+      yearCell.className = 'case-year';
+      yearCell.textContent = c.year;
+      tr.appendChild(yearCell);
+      
+      // Button cell
+      const btnCell = mk('td');
+      const btn = mk('button');
+      btn.className = 'btn-open';
+      btn.dataset.id = c.id;
+      btn.textContent = 'Open Case ↓';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log(`[BTN-CLICK] Button clicked for case: ${c.id}`);
+        toggleInlineViewer(c.id, viewerHost, btn, false);
+      });
+      btnCell.appendChild(btn);
+      tr.appendChild(btnCell);
+      
+      tbody.appendChild(tr);
     });
-    btnCell.appendChild(btn);
-    tr.appendChild(btnCell);
-    
-    tbody.appendChild(tr);
-  });
-  
+  }
+
+  // ===== FUNCTION: Render pagination controls for this bubble =====
+  function renderBubblePagination() {
+    const paginDiv = paginationContainer;
+    paginDiv.innerHTML = '';
+
+    if (bubbleState.totalPages <= 1) {
+      paginDiv.style.display = 'none';
+      return;
+    }
+
+    paginDiv.style.display = 'flex';
+    paginDiv.style.justifyContent = 'center';
+    paginDiv.style.alignItems = 'center';
+    paginDiv.style.gap = '8px';
+    paginDiv.style.marginTop = '15px';
+    paginDiv.style.flexWrap = 'wrap';
+
+    // First button
+    const btnFirst = mk('button', 'pagination-btn');
+    btnFirst.textContent = '«';
+    btnFirst.disabled = bubbleState.currentPage === 1;
+    btnFirst.addEventListener('click', () => {
+      bubbleState.currentPage = 1;
+      renderBubblePage();
+      renderBubblePagination();
+    });
+    paginDiv.appendChild(btnFirst);
+
+    // Previous button
+    const btnPrev = mk('button', 'pagination-btn');
+    btnPrev.textContent = '<';
+    btnPrev.disabled = bubbleState.currentPage === 1;
+    btnPrev.addEventListener('click', () => {
+      bubbleState.currentPage--;
+      renderBubblePage();
+      renderBubblePagination();
+    });
+    paginDiv.appendChild(btnPrev);
+
+    // Page numbers (show 5 consecutive: current ± 2)
+    const start = Math.max(1, bubbleState.currentPage - 2);
+    const end = Math.min(bubbleState.totalPages, bubbleState.currentPage + 2);
+    for (let p = start; p <= end; p++) {
+      const btn = mk('button', 'pagination-page-btn');
+      btn.textContent = p;
+      if (p === bubbleState.currentPage) {
+        btn.classList.add('active');
+        btn.textContent = `{${p}}`;
+      }
+      btn.addEventListener('click', () => {
+        bubbleState.currentPage = p;
+        renderBubblePage();
+        renderBubblePagination();
+      });
+      paginDiv.appendChild(btn);
+    }
+
+    // Next button
+    const btnNext = mk('button', 'pagination-btn');
+    btnNext.textContent = '>';
+    btnNext.disabled = bubbleState.currentPage === bubbleState.totalPages;
+    btnNext.addEventListener('click', () => {
+      bubbleState.currentPage++;
+      renderBubblePage();
+      renderBubblePagination();
+    });
+    paginDiv.appendChild(btnNext);
+
+    // Last button
+    const btnLast = mk('button', 'pagination-btn');
+    btnLast.textContent = '»';
+    btnLast.disabled = bubbleState.currentPage === bubbleState.totalPages;
+    btnLast.addEventListener('click', () => {
+      bubbleState.currentPage = bubbleState.totalPages;
+      renderBubblePage();
+      renderBubblePagination();
+    });
+    paginDiv.appendChild(btnLast);
+  }
+
   table.appendChild(tbody);
   wrap.appendChild(table);
 
-  const viewerHost = mk('div', 'inline-viewer-host');
+  // ===== Create pagination container =====
+  const paginationContainer = mk('div', 'bubble-pagination-controls');
+  wrap.appendChild(paginationContainer);
+
   wrap.appendChild(viewerHost);
   
-  console.log(`[CASE TABLE] Created table with ${cases.length} rows and click handlers`);
+  // Initial render
+  renderBubblePage();
+  renderBubblePagination();
+  
+  console.log(`[CASE TABLE] Created paginated table with ${cases.length} total rows, showing ${ITEMS_PER_PAGE} per page`);
   
   return wrap;
 }
@@ -1876,11 +2080,189 @@ function buildJudgmentParagraphsReader(paragraphs, caseMetadata = {}) {
 
 function buildStudyOutput(sections) {
   const wrap = mk('div', 'study-output');
+  wrap.style.cssText = 'margin-top:14px;padding:12px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;';
+  
   sections.forEach(s => {
+    const type = s.output_type || 'unknown';
     const block = mk('div', 'study-block');
-    const lbl   = mk('p',   'study-block__label'); lbl.textContent  = s.label;
-    const body  = mk('div', 'study-block__body');  body.innerHTML   = s.body;
-    block.appendChild(lbl); block.appendChild(body);
+    block.style.cssText = 'margin-bottom:16px;padding:12px;background:#fff;border-radius:8px;border-left:3px solid #3b82f6;';
+    
+    const lbl = mk('p', 'study-block__label');
+    lbl.style.cssText = 'margin:0 0 8px 0;font-size:13px;font-weight:600;color:#1f2937;text-transform:uppercase;letter-spacing:0.5px;';
+    
+    switch(type) {
+      case 'concept_explanation':
+      case 'case_explanation':
+      case 'bare_act_simplified':
+      case 'deep_dive':
+        lbl.textContent = `📚 ${type.replace(/_/g, ' ').toUpperCase()}`;
+        const textBody = mk('div', 'study-block__body');
+        textBody.style.cssText = 'font-size:14px;line-height:1.7;color:#374151;';
+        textBody.innerHTML = s.body || (s.text || 'Loading...');
+        block.appendChild(lbl);
+        block.appendChild(textBody);
+        break;
+        
+      case 'case_brief':
+      case 'notes':
+        lbl.textContent = `📝 ${type === 'case_brief' ? 'CASE BRIEF (FIHR)' : 'STUDY NOTES'}`;
+        const briefBody = mk('div', 'study-block__body');
+        briefBody.style.cssText = 'font-size:13px;line-height:1.6;color:#374151;';
+        briefBody.innerHTML = s.body || s.text || 'No content';
+        block.appendChild(lbl);
+        block.appendChild(briefBody);
+        break;
+        
+      case 'flashcards':
+        lbl.textContent = '🃏 FLASHCARDS';
+        block.appendChild(lbl);
+        if (s.cards && Array.isArray(s.cards)) {
+          const deckWrap = mk('div');
+          deckWrap.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;';
+          s.cards.forEach((card, i) => {
+            const cardEl = mk('div');
+            cardEl.style.cssText = 'padding:12px;background:#fff;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;min-height:100px;display:flex;flex-direction:column;justify-content:center;transition:all 0.3s;';
+            cardEl.title = 'Click to flip';
+            let flipped = false;
+            const updateCard = () => {
+              cardEl.innerHTML = `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">${flipped ? 'ANSWER' : 'QUESTION'}</div><div style="font-size:13px;font-weight:${flipped ? '400' : '600'};color:#111;">${flipped ? (card.answer || card.A || '') : (card.question || card.Q || '')}</div><div style="font-size:10px;color:#d1d5db;margin-top:8px;">${card.difficulty || 'medium'} • ${card.type || 'fact'}</div>`;
+            };
+            updateCard();
+            cardEl.addEventListener('click', () => {
+              flipped = !flipped;
+              updateCard();
+            });
+            cardEl.onmouseover = () => cardEl.style.borderColor = '#3b82f6';
+            cardEl.onmouseout = () => cardEl.style.borderColor = '#d1d5db';
+            deckWrap.appendChild(cardEl);
+          });
+          block.appendChild(deckWrap);
+        } else {
+          const empty = mk('p');
+          empty.textContent = 'No flashcards generated';
+          empty.style.color = '#9ca3af';
+          block.appendChild(empty);
+        }
+        break;
+        
+      case 'arguments':
+        lbl.textContent = '⚔️ ARGUMENTS';
+        block.appendChild(lbl);
+        const argBody = mk('div');
+        argBody.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+        
+        ['petitioner_arguments', 'respondent_arguments'].forEach((side, idx) => {
+          const sideDiv = mk('div');
+          sideDiv.style.cssText = `padding:12px;background:${idx === 0 ? '#eff6ff' : '#fef2f2'};border-left:3px solid ${idx === 0 ? '#3b82f6' : '#ef4444'};border-radius:6px;`;
+          const sideTitle = mk('div', 'study-side-title');
+          sideTitle.style.cssText = `font-size:12px;font-weight:700;color:${idx === 0 ? '#1d4ed8' : '#991b1b'};margin-bottom:8px;text-transform:uppercase;`;
+          sideTitle.textContent = idx === 0 ? '👤 Petitioner' : '👤 Respondent';
+          sideDiv.appendChild(sideTitle);
+          
+          const args = s[side] || [];
+          const argsList = mk('ul');
+          argsList.style.cssText = 'list-style:none;padding:0;margin:0;';
+          (Array.isArray(args) ? args : [args]).forEach(arg => {
+            const li = mk('li');
+            li.style.cssText = 'margin-bottom:8px;font-size:12px;line-height:1.5;color:#374151;';
+            li.innerHTML = `<strong>${arg.point || arg.heading || 'Argument'}</strong><br/>${arg.detail || arg.text || ''}`;
+            argsList.appendChild(li);
+          });
+          sideDiv.appendChild(argsList);
+          argBody.appendChild(sideDiv);
+        });
+        
+        if (s.court_finding) {
+          const courtDiv = mk('div');
+          courtDiv.style.cssText = 'grid-column:1/-1;padding:12px;background:#f0fdf4;border-left:3px solid #22c55e;border-radius:6px;margin-top:8px;';
+          const courtTitle = mk('div');
+          courtTitle.style.cssText = 'font-size:12px;font-weight:700;color:#166534;margin-bottom:6px;text-transform:uppercase;';
+          courtTitle.textContent = '⚖️ Court Finding';
+          const courtText = mk('div');
+          courtText.style.cssText = 'font-size:13px;color:#374151;line-height:1.6;';
+          courtText.textContent = s.court_finding;
+          courtDiv.appendChild(courtTitle);
+          courtDiv.appendChild(courtText);
+          argBody.appendChild(courtDiv);
+        }
+        block.appendChild(argBody);
+        break;
+        
+      case 'qa_mode':
+        lbl.textContent = '❓ EXAM QUESTIONS';
+        block.appendChild(lbl);
+        const qaBody = mk('div');
+        const qaItems = s.qa_pairs || s.questions || [];
+        (Array.isArray(qaItems) ? qaItems : [qaItems]).forEach(item => {
+          const item_div = mk('div');
+          item_div.style.cssText = 'margin-bottom:8px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;';
+          const q = mk('div');
+          q.style.cssText = 'padding:10px;background:#f3f4f6;cursor:pointer;font-weight:500;font-size:12px;user-select:none;';
+          q.textContent = item.question || item.q || 'Question';
+          let shown = false;
+          const a = mk('div');
+          a.style.cssText = 'padding:10px;background:#fff;font-size:12px;color:#374151;line-height:1.5;display:none;border-top:1px solid #e5e7eb;';
+          a.textContent = item.answer || item.a || 'Answer';
+          q.addEventListener('click', () => {
+            shown = !shown;
+            a.style.display = shown ? '' : 'none';
+            q.style.background = shown ? '#dbeafe' : '#f3f4f6';
+          });
+          item_div.appendChild(q);
+          item_div.appendChild(a);
+          qaBody.appendChild(item_div);
+        });
+        block.appendChild(qaBody);
+        break;
+        
+      case 'ratio':
+      case 'ratio-obiter':
+        lbl.textContent = '🔍 RATIO & OBITER';
+        block.appendChild(lbl);
+        const ratioBody = mk('div');
+        
+        if (s.ratio_summary) {
+          const ratioDiv = mk('div');
+          ratioDiv.style.cssText = 'padding:10px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.6;';
+          ratioDiv.innerHTML = `<strong>📌 Ratio:</strong> ${s.ratio_summary}`;
+          ratioBody.appendChild(ratioDiv);
+        }
+        
+        if (s.classifications && Array.isArray(s.classifications)) {
+          const classTable = mk('table');
+          classTable.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse;';
+          classTable.innerHTML = `<thead><tr style="background:#f3f4f6;border-bottom:1px solid #e5e7eb;"><th style="padding:6px;text-align:left;font-weight:600;">Para</th><th style="padding:6px;text-align:left;font-weight:600;">Type</th><th style="padding:6px;text-align:left;font-weight:600;">Conf</th></tr></thead><tbody>${(s.classifications || []).map(c => `<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:6px;color:#666;">${c.para_number || c.para}</td><td style="padding:6px;"><span style="background:#e0e7ff;color:#3730a3;padding:2px 6px;border-radius:3px;font-weight:600;font-size:10px;">${c.type || 'unknown'}</span></td><td style="padding:6px;color:#666;font-size:10px;">${c.confidence || 'med'}</td></tr>`).join('')}</tbody>`;
+          ratioBody.appendChild(classTable);
+        }
+        
+        if (s.key_obiter) {
+          const obiterDiv = mk('div');
+          obiterDiv.style.cssText = 'padding:10px;background:#f3f4f6;border-left:3px solid #8b5cf6;border-radius:6px;margin-top:12px;font-size:12px;line-height:1.6;';
+          obiterDiv.innerHTML = `<strong>💭 Key Obiter:</strong> ${s.key_obiter}`;
+          ratioBody.appendChild(obiterDiv);
+        }
+        
+        block.appendChild(ratioBody);
+        break;
+        
+      case 'synthesis':
+      case 'synthesize':
+        lbl.textContent = '🔗 MULTI-CASE SYNTHESIS';
+        block.appendChild(lbl);
+        const synthBody = mk('div');
+        synthBody.style.cssText = 'font-size:13px;line-height:1.7;color:#374151;';
+        synthBody.innerHTML = s.body || s.text || s.synthesis || 'Synthesizing cases...';
+        block.appendChild(synthBody);
+        break;
+        
+      default:
+        lbl.textContent = type.replace(/_/g, ' ').toUpperCase();
+        const genericBody = mk('div');
+        genericBody.innerHTML = s.body || s.text || JSON.stringify(s).substring(0, 100);
+        block.appendChild(lbl);
+        block.appendChild(genericBody);
+    }
+    
     wrap.appendChild(block);
   });
   return wrap;
@@ -2006,4 +2388,47 @@ function initNewChatButton() {
     switchSubmode('normal');
     $('sidebar').classList.remove('open');
   });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Draft from Case Integration
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch case data and auto-fill the drafting form
+ * Called when user clicks "✍️ Draft" button on case viewer
+ */
+async function draftFromThisCase(caseData) {
+  try {
+    const caseId = caseData.id;
+    console.log('[DRAFT] Fetching case data for drafting:', caseId);
+    
+    // Fetch pre-filled data from backend
+    const res = await fetch(`http://localhost:8000/api/draft/prefill/${caseId}`);
+    if (!res.ok) {
+      alert(`Failed to load case data: ${res.status}`);
+      return;
+    }
+    
+    const prefillData = await res.json();
+    console.log('[DRAFT] Case data received from backend:', prefillData);
+    
+    // Switch to Drafting Engine tab
+    switchMode('drafting');
+    console.log('[DRAFT] Switched to drafting mode');
+    
+    // Auto-fill the form
+    setTimeout(() => {
+      if (typeof MadhavDrafting !== 'undefined' && MadhavDrafting.prefillFromCase) {
+        MadhavDrafting.prefillFromCase(prefillData);
+        console.log('[DRAFT] Form pre-filled successfully');
+      } else {
+        console.error('[DRAFT] MadhavDrafting not available');
+      }
+    }, 100);
+    
+  } catch (err) {
+    console.error('[DRAFT] Error drafting from case:', err);
+    alert('Error: ' + err.message);
+  }
 }

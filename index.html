@@ -272,6 +272,15 @@
                   </thead>
                   <tbody id="results-tbody"></tbody>
                 </table>
+                
+                <!-- Pagination Controls -->
+                <div class="pagination-controls hidden" id="pagination-controls">
+                  <button class="pagination-btn" id="btn-first-page" title="First page">«</button>
+                  <button class="pagination-btn" id="btn-prev-page" title="Previous page">&lt;</button>
+                  <div class="pagination-pages" id="pagination-pages"></div>
+                  <button class="pagination-btn" id="btn-next-page" title="Next page">&gt;</button>
+                  <button class="pagination-btn" id="btn-last-page" title="Last page">»</button>
+                </div>
               </div>
 
               <!-- Inline case viewer for traditional mode -->
@@ -352,7 +361,11 @@
 
   <script src="js/api.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/case_viewer.js"></script>
+  <script src="js/study_mode.js"></script>
   <script src="js/debug.js"></script>
+  <!-- jsPDF for legal document PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="js/drafting.js"></script>
   <script src="js/search.js"></script>
 
@@ -360,7 +373,12 @@
     // Initialize drafting engine and search when DOM is ready
     document.addEventListener("DOMContentLoaded", function () {
       MadhavDrafting.init("madhav-drafting");
-      MadhavSearch.init("search-container", "search-input");
+      // MadhavSearch uses the traditional search interface (token-raw-input)
+      // Only initialize if we have the traditional search UI
+      const tradSearch = document.getElementById("traditional-interface");
+      if (tradSearch) {
+        MadhavSearch.init("token-search-wrap", "token-raw-input");
+      }
     });
   </script>
 </body>
