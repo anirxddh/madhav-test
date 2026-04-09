@@ -1266,6 +1266,76 @@ a { text-decoration: none; color: inherit; }
   font-weight: bold;
 }
 
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+/* DAY 2 — PRECEDENT BADGES                                    */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+.precedent-badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: calc(var(--r) / 2);
+  font-size: 0.85em;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.precedent-badge--loading {
+  background: rgba(100, 150, 200, 0.15);
+  color: rgba(180, 200, 230, 0.9);
+  border: 1px solid rgba(100, 150, 200, 0.3);
+}
+
+.precedent-badge--good {
+  background: rgba(52, 201, 122, 0.15);
+  color: #34c97a;
+  border: 1px solid rgba(52, 201, 122, 0.3);
+}
+
+.precedent-badge--good:hover {
+  background: rgba(52, 201, 122, 0.25);
+  border-color: rgba(52, 201, 122, 0.5);
+}
+
+.precedent-badge--overruled {
+  background: rgba(224, 84, 84, 0.15);
+  color: #e05454;
+  border: 1px solid rgba(224, 84, 84, 0.3);
+}
+
+.precedent-badge--overruled:hover {
+  background: rgba(224, 84, 84, 0.25);
+  border-color: rgba(224, 84, 84, 0.5);
+}
+
+.precedent-badge--distinguished {
+  background: rgba(229, 150, 58, 0.15);
+  color: #e5963a;
+  border: 1px solid rgba(229, 150, 58, 0.3);
+}
+
+.precedent-badge--distinguished:hover {
+  background: rgba(229, 150, 58, 0.25);
+  border-color: rgba(229, 150, 58, 0.5);
+}
+
+.precedent-badge--doubted {
+  background: rgba(200, 160, 80, 0.15);
+  color: #d4a050;
+  border: 1px solid rgba(200, 160, 80, 0.3);
+}
+
+.precedent-badge--doubted:hover {
+  background: rgba(200, 160, 80, 0.25);
+  border-color: rgba(200, 160, 80, 0.5);
+}
+
+.precedent-badge--unknown {
+  background: rgba(150, 150, 160, 0.15);
+  color: rgba(200, 200, 210, 0.8);
+  border: 1px solid rgba(150, 150, 160, 0.3);
+}
+
 /* ── BUBBLE PAGINATION (in-chat pagination) ────────────────── */
 .bubble-pagination-controls {
   display: flex;
@@ -1335,11 +1405,15 @@ a { text-decoration: none; color: inherit; }
 .results-count { font-size: 13px; color: var(--c-mid); font-weight: 500; }
 
 .table-wrap { flex-shrink: 0; overflow-x: auto; }
-.data-table { width: 100%; border-collapse: collapse; }
-.data-table th { background: rgba(20,20,24,0.97); color: var(--c-sub); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 10px 18px; text-align: left; border-bottom: 1px solid var(--border-mid); }
-.data-table td { padding: 11px 18px; font-size: 13.5px; color: var(--c-mid); border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+.data-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.data-table th { background: rgba(20,20,24,0.97); color: var(--c-sub); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border-mid); }
+.data-table td { padding: 11px 8px; font-size: 13.5px; color: var(--c-mid); border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
 .data-table tr:hover td { background: var(--glass-xs); }
-.data-table td:first-child { color: var(--c-sub); font-family: var(--f-mono); font-size: 11.5px; }
+.data-table td:first-child { color: var(--c-sub); font-family: var(--f-mono); font-size: 11.5px; width: 30px; }
+.data-table td.td-case-name { width: 45%; }
+.data-table td.td-court { width: 15%; }
+.data-table td.td-year { width: 10%; }
+.data-table td.td-precedent-status { width: 30%; }
 
 #trad-inline-viewer { padding: 0 16px 16px; }
 .results-empty, .results-loading { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 60px 24px; text-align: center; }

@@ -724,7 +724,11 @@ function renderCurrentPage() {
   const tbody = $('results-tbody');
   tbody.innerHTML = '';
 
+  // Build all rows first
+  const caseIds = [];
   pageCases.forEach((c, i) => {
+    caseIds.push(c.id);
+    
     const actualIndex = start + i + 1;  // For display as row number
     const score  = c.authority_score || 50;
     const tier   = score >= 85 ? 'high' : score >= 65 ? 'medium' : 'low';
@@ -732,6 +736,7 @@ function renderCurrentPage() {
     const label  = score >= 85 ? 'High' : score >= 65 ? 'Medium' : 'Low';
 
     const tr = mk('tr');
+    tr.dataset.caseId = c.id;
     tr.innerHTML = `
       <td>${actualIndex}</td>
       <td class="td-case-name">${c.name}</td>
@@ -746,17 +751,87 @@ function renderCurrentPage() {
           <span class="authority-level">${label}</span>
         </span>
       </td>
+      <td class="td-precedent-status">
+        <span class="precedent-badge precedent-badge--loading" title="Checking precedent status...">
+          ⏳ Loading...
+        </span>
+      </td>
       <td><button class="btn-open" data-id="${c.id}">Open ↓</button></td>
     `;
     tbody.appendChild(tr);
   });
 
+  // Fetch precedent status for all cases on this page (async, non-blocking)
+  if (caseIds.length > 0) {
+    API.getBulkPrecedentStatus(caseIds)
+      .then(data => {
+        if (data?.statuses) {
+          Object.entries(data.statuses).forEach(([caseId, status]) => {
+            const row = tbody.querySelector(`tr[data-case-id="${caseId}"]`);
+            if (row) {
+              const statusCell = row.querySelector('.td-precedent-status');
+              if (statusCell) {
+                const badge = statusCell.querySelector('.precedent-badge');
+                
+                // Map status to display
+                let icon = '❓';
+                let labelText = 'Unknown';
+                let className = 'precedent-badge--unknown';
+                
+                switch (status.status) {
+                  case 'good_law':
+                    icon = '✅';
+                    labelText = `Good Law (${status.strength})`;
+                    className = 'precedent-badge--good';
+                    break;
+                  case 'overruled':
+                    icon = '⚠️';
+                    labelText = 'Overruled';
+                    className = 'precedent-badge--overruled';
+                    break;
+                  case 'distinguished':
+                    icon = '🔹';
+                    labelText = 'Distinguished';
+                    className = 'precedent-badge--distinguished';
+                    break;
+                  case 'doubted':
+                    icon = '❔';
+                    labelText = 'Doubted';
+                    className = 'precedent-badge--doubted';
+                    break;
+                  default:
+                    icon = '❓';
+                    labelText = 'Unknown';
+                    className = 'precedent-badge--unknown';
+                }
+                
+                badge.className = `precedent-badge ${className}`;
+                badge.innerHTML = `${icon} ${labelText}`;
+                badge.title = status.label || 'Precedent status';
+              }
+            }
+          });
+        }
+      })
+      .catch(err => {
+        console.warn('[API] Could not fetch precedent statuses:', err);
+        // Badges remain as "Loading" or show error state
+        tbody.querySelectorAll('.precedent-badge--loading').forEach(b => {
+          b.className = 'precedent-badge precedent-badge--unknown';
+          b.innerHTML = '❓ Status unavailable';
+          b.title = 'Precedent status service unavailable';
+        });
+      });
+  }
+
+  // Wire up Open buttons
   tbody.querySelectorAll('.btn-open').forEach(btn =>
     btn.addEventListener('click', () =>
       toggleInlineViewer(btn.dataset.id, $('trad-inline-viewer'), btn, true)
     )
   );
 }
+
 
 function renderPaginationControls(totalPages) {
   const pagesDiv = $('pagination-pages');
@@ -1733,7 +1808,7 @@ function buildCaseResultsTable(cases, skipLabel = false) {
   const table = mk('table', 'case-table');
   const thead = mk('thead');
   const theadTr = mk('tr');
-  ['Case Name', 'Court', 'Year', ''].forEach(col => {
+  ['#', 'Case Name', 'Court', 'Year', 'Precedent Status', ''].forEach(col => {
     const th = mk('th');
     th.textContent = col;
     theadTr.appendChild(th);
@@ -1750,13 +1825,23 @@ function buildCaseResultsTable(cases, skipLabel = false) {
     const start = (bubbleState.currentPage - 1) * bubbleState.itemsPerPage;
     const end = start + bubbleState.itemsPerPage;
     const pageCases = bubbleState.allCases.slice(start, end);
+    
+    const caseIds = [];
 
     pageCases.forEach((c, i) => {
+      const actualIndex = start + i + 1;
       const tr = mk('tr');
+      tr.dataset.caseId = c.id;
+      caseIds.push(c.id);
+      
+      // Index cell
+      const indexCell = mk('td');
+      indexCell.textContent = actualIndex;
+      tr.appendChild(indexCell);
       
       // Case name cell
       const nameCell = mk('td');
-      nameCell.className = 'case-name';
+      nameCell.className = 'case-name td-case-name';
       nameCell.textContent = c.name;
       tr.appendChild(nameCell);
       
@@ -1768,9 +1853,18 @@ function buildCaseResultsTable(cases, skipLabel = false) {
       
       // Year cell
       const yearCell = mk('td');
-      yearCell.className = 'case-year';
+      yearCell.className = 'case-year td-year';
       yearCell.textContent = c.year;
       tr.appendChild(yearCell);
+      
+      // Precedent Status cell
+      const statusCell = mk('td');
+      statusCell.className = 'td-precedent-status';
+      const badge = mk('span', 'precedent-badge precedent-badge--loading');
+      badge.title = 'Checking precedent status...';
+      badge.textContent = '⏳ Loading...';
+      statusCell.appendChild(badge);
+      tr.appendChild(statusCell);
       
       // Button cell
       const btnCell = mk('td');
@@ -1789,6 +1883,57 @@ function buildCaseResultsTable(cases, skipLabel = false) {
       
       tbody.appendChild(tr);
     });
+    
+    // Fetch precedent status for all cases on this page (async, non-blocking)
+    if (caseIds.length > 0) {
+      API.getBulkPrecedentStatus(caseIds)
+        .then(data => {
+          if (data?.statuses) {
+            Object.entries(data.statuses).forEach(([caseId, status]) => {
+              const row = tbody.querySelector(`tr[data-case-id="${caseId}"]`);
+              if (!row) return;
+              
+              const statusCell = row.querySelector('.td-precedent-status');
+              const badge = statusCell?.querySelector('.precedent-badge');
+              if (!badge) return;
+              
+              let className = 'precedent-badge--unknown';
+              let icon = '❓';
+              let labelText = 'Unknown';
+              
+              if (status.status === 'good_law') {
+                className = 'precedent-badge--good';
+                icon = '✅';
+                labelText = `Good Law (${status.strength})`;
+              } else if (status.status === 'overruled') {
+                className = 'precedent-badge--overruled';
+                icon = '⚠️';
+                labelText = 'Overruled';
+              } else if (status.status === 'distinguished') {
+                className = 'precedent-badge--distinguished';
+                icon = '🔹';
+                labelText = 'Distinguished';
+              } else if (status.status === 'doubted') {
+                className = 'precedent-badge--doubted';
+                icon = '❔';
+                labelText = 'Doubted';
+              }
+              
+              badge.className = `precedent-badge ${className}`;
+              badge.textContent = `${icon} ${labelText}`;
+              badge.title = status.label || 'Precedent status';
+            });
+          }
+        })
+        .catch(err => {
+          console.warn('[API] Could not fetch precedent statuses:', err);
+          tbody.querySelectorAll('.precedent-badge--loading').forEach(b => {
+            b.className = 'precedent-badge precedent-badge--unknown';
+            b.textContent = '❓ Unknown';
+            b.title = 'Precedent status service unavailable';
+          });
+        });
+    }
   }
 
   // ===== FUNCTION: Render pagination controls for this bubble =====

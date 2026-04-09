@@ -385,6 +385,157 @@ const API = {
     return { suggestions: matched };
   },
 
+  /**
+   * DAY 2 — PRECEDENT INTELLIGENCE
+   * Get precedent status for a single case
+   *
+   * GET /api/cases/{case_id}/precedent-status
+   *
+   * Response:
+   * {
+   *   case_id: string,
+   *   case_name: string,
+   *   status: "good_law" | "overruled" | "distinguished" | "doubted" | "unknown",
+   *   status_label: string,
+   *   strength_score: 0-100,
+   *   treatment_counts: { followed: num, distinguished: num, ... },
+   *   citing_cases_scanned: number,
+   *   top_citing_cases: [ { case_name, citation, treatment, year }, ... ]
+   * }
+   */
+  async getPrecedentStatus(caseId) {
+    if (USE_MOCK) {
+      await _delay(100);
+      return {
+        case_id: caseId,
+        case_name: 'Sample Case',
+        status: 'good_law',
+        status_label: 'Good law — followed in 15 later cases',
+        strength_score: 82,
+        treatment_counts: { followed: 15, distinguished: 2, overruled: 0, doubted: 0 },
+        citing_cases_scanned: 17,
+        top_citing_cases: [
+          { case_name: 'Case A', citation: 'AIR 2020 SC 123', treatment: 'followed', year: 2020 },
+          { case_name: 'Case B', citation: 'AIR 2021 SC 456', treatment: 'distinguished', year: 2021 },
+        ]
+      };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/cases/${caseId}/precedent-status`);
+      if (!res.ok) {
+        throw new Error(`Precedent status not available for ${caseId}`);
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn(`[API] Could not fetch precedent status: ${err.message}`);
+      return null;
+    }
+  },
+
+  /**
+   * DAY 2 — PRECEDENT INTELLIGENCE
+   * Get bulk precedent status for multiple cases (for search results)
+   *
+   * POST /api/cases/bulk-precedent-status
+   * Body: { case_ids: [string, ...] }
+   *
+   * Response:
+   * {
+   *   statuses: {
+   *     case_id: { status, strength, label, treatment_counts, citing_count }
+   *   },
+   *   from_cache: boolean
+   * }
+   */
+  async getBulkPrecedentStatus(caseIds) {
+    if (USE_MOCK) {
+      await _delay(50);
+      const statuses = {};
+      caseIds.forEach(id => {
+        statuses[id] = {
+          status: ['good_law', 'overruled', 'distinguished'][Math.floor(Math.random() * 3)],
+          strength: Math.floor(Math.random() * 100),
+          label: 'See details',
+          treatment_counts: { followed: 10, distinguished: 2 },
+          citing_count: 12,
+        };
+      });
+      return { statuses, from_cache: true };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/cases/bulk-precedent-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ case_ids: caseIds }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Bulk status request failed');
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn(`[API] Could not fetch bulk precedent status: ${err.message}`);
+      return { statuses: {}, from_cache: false };
+    }
+  },
+
+  /**
+   * DAY 2 — PRECEDENT INTELLIGENCE
+   * Get citation context for a case ("why was it cited")
+   *
+   * GET /api/cases/{case_id}/citation-context?use_ai=false
+   *
+   * Response:
+   * {
+   *   case_id: string,
+   *   case_name: string,
+   *   citations: [
+   *     {
+   *       cited_case_name: string,
+   *       year: number,
+   *       paragraph: string,
+   *       context_snippet: string,
+   *       cited_for: string,
+   *       treatment: string
+   *     },
+   *     ...
+   *   ]
+   * }
+   */
+  async getCitationContext(caseId, useAI = false) {
+    if (USE_MOCK) {
+      await _delay(200);
+      return {
+        case_id: caseId,
+        case_name: 'Sample Case',
+        citations: [
+          {
+            cited_case_name: 'Maneka Gandhi v. UoI',
+            year: 1978,
+            paragraph: 'Para 34',
+            context_snippet: '...Article 21 protects the right to travel...',
+            cited_for: 'Right to travel is a fundamental right',
+            treatment: 'followed',
+          },
+        ]
+      };
+    }
+
+    try {
+      const url = `${BASE_URL}/api/cases/${caseId}/citation-context?use_ai=${useAI}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Citation context not available for ${caseId}`);
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn(`[API] Could not fetch citation context: ${err.message}`);
+      return null;
+    }
+  },
+
 };
 
 
