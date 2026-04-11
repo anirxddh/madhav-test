@@ -152,9 +152,17 @@
         <!-- ── TRADITIONAL INTERFACE ──────────────────────────── -->
         <section class="interface hidden" id="traditional-interface">
 
-          <div class="trad-search-zone">
-            <p class="welcome-eyebrow">Database Mode</p>
-            <h2 class="trad-heading">Legal Database Search</h2>
+          <!-- Traditional Mode Tabs -->
+          <div class="trad-mode-tabs" id="trad-mode-tabs">
+            <button class="trad-mode-tab active" data-trad-mode="search">Search Cases</button>
+            <button class="trad-mode-tab" data-trad-mode="issue-spotter">Issue Spotter</button>
+          </div>
+
+          <!-- ═ SEARCH Mode ═ -->
+          <div class="trad-search-mode active" id="trad-search-mode">
+            <div class="trad-search-zone">
+              <p class="welcome-eyebrow">Database Mode</p>
+              <h2 class="trad-heading">Legal Database Search</h2>
 
             <!-- ═══ TOKEN SEARCH INPUT (replaces old search pill) ═══ -->
             <div class="token-search-wrap" id="token-search-wrap">
@@ -297,7 +305,59 @@
 
             </div>
           </div>
-        </section>
+          </div><!-- /trad-search-mode -->
+
+          <!-- ═ ISSUE SPOTTER Mode ═ -->
+          <div class="trad-issue-spotter hidden" id="trad-issue-spotter">
+            <div class="trad-search-zone">
+              <p class="welcome-eyebrow">Legal Research Tool</p>
+              <h2 class="trad-heading">Issue Spotter</h2>
+              <p class="trad-subheading">Describe client facts → Identify legal issues</p>
+            </div>
+
+            <div class="issue-spotter-body">
+              <div class="issue-spotter-form">
+                <div class="form-group">
+                  <label class="form-label">Client Facts & Scenario</label>
+                  <textarea 
+                    class="issue-input-textarea" 
+                    id="issue-facts-input" 
+                    placeholder="Describe the factual situation. E.g., 'Client was terminated without notice despite 5 years of service. Employer denied severance...'"></textarea>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Additional Context (Optional)</label>
+                  <textarea 
+                    class="issue-input-textarea" 
+                    id="issue-context-input" 
+                    placeholder="Any relevant background, industry sector, specific acts involved, etc."></textarea>
+                </div>
+
+                <button class="btn-spot-issues" id="btn-spot-issues">Spot Issues</button>
+              </div>
+
+              <div class="issue-results hidden" id="issue-results">
+                <div class="issue-results-loading hidden" id="issue-results-loading">
+                  <div class="spinner"></div>
+                  <p>Analyzing facts<span class="loading-dots"></span></p>
+                </div>
+
+                <div class="issue-results-content" id="issue-results-content"></div>
+
+                <button class="btn-new-issue-spot" id="btn-new-issue-spot">Start Over</button>
+              </div>
+
+              <div class="issue-results-empty" id="issue-results-empty">
+                <div class="empty-icon-wrap">
+                  <span class="ico-lightbulb" aria-hidden="true">💡</span>
+                </div>
+                <p class="empty-title">No issues spotted yet</p>
+                <p class="empty-sub">Describe your facts above to identify legal issues and applicable laws</p>
+              </div>
+            </div>
+          </div><!-- /trad-issue-spotter -->
+
+        </section><!-- /traditional-interface -->
 
         <!-- ── DRAFTING INTERFACE ──────────────────────────── -->
         <section class="interface hidden" id="drafting-interface">

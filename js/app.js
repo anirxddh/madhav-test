@@ -13,9 +13,10 @@
  *   6.  Chat                 (AI mode input + rendering)
  *   7.  Traditional search   (token search + filters + results table)
  *   8.  Token search UI      (pill tokens + suggestion dropdown)
- *   9.  Inline case viewer   (Summary / Facts / Judgement / Citations / PDF)
- *  10.  PDF side panel       (right-side split panel)
- *  11.  Utilities
+ *   9.  Issue Spotter        (Fact analysis + issue identification)
+ *  10.  Inline case viewer   (Summary / Facts / Judgement / Citations / PDF)
+ *  11.  PDF side panel       (right-side split panel)
+ *  12.  Utilities
  * ============================================================
  */
 
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initWelcomeSuggestions();
   initTokenSearch();
   initFilterPanel();
+  initIssueSporter();
   initPDFSidePanel();
   initNewChatButton();
   initHamburger();
@@ -155,13 +157,57 @@ async function sendChatMessage() {
   const typingId = appendTypingIndicator();
 
   try {
-    // ── API CALL ──────────────────────────────────────────────
-    const data = await API.chat(query, State.submode);
-    // Returns { text, cases } for normal/research
-    // Returns { sections }   for study
-    // ─────────────────────────────────────────────────────────
-    removeTypingIndicator(typingId);
-    renderAIResponse(data);
+    let data;
+    
+    // ✅ EXTENDED DEBUG: Show state before routing
+    console.log('[CHAT-FLOW] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[CHAT-FLOW] State.mode:', State.mode);
+    console.log('[CHAT-FLOW] State.submode:', State.submode);
+    console.log('[CHAT-FLOW] Query:', query.substring(0, 60));
+    console.log('[CHAT-FLOW] About to check: State.submode === "study"?', State.submode === 'study');
+    
+    // ── STUDY MODE: Smart multi-output search ──────────────────
+    if (State.submode === 'study') {
+      console.log('[CHAT-FLOW] ✅ STUDY MODE DETECTED - Routing to API.studySearch()');
+      console.log('[CHAT-FLOW] Calling API.studySearch(query)...');
+      data = await API.studySearch(query);
+      // Returns { query, category, study_output_type, available_tabs, tab_order, outputs, case_id, case_name }
+      console.log('[CHAT-FLOW] ✅ API.studySearch() Response received:', {
+        hasData: !!data,
+        category: data?.category,
+        hasTabs: !!data?.available_tabs,
+        tabCount: data?.available_tabs?.length || 0,
+        tabOrder: data?.tab_order?.join(', ') || 'NONE',
+        outputKeys: data?.outputs ? Object.keys(data.outputs) : [],
+      });
+      removeTypingIndicator(typingId);
+      console.log('[CHAT-FLOW] ✅ Calling renderStudyResults(data) with:', {
+        query: data?.query,
+        category: data?.category,
+        tabsCount: data?.available_tabs?.length,
+      });
+      renderStudyResults(data);
+      console.log('[CHAT-FLOW] ✅ renderStudyResults() completed');
+    } 
+    // ── NORMAL MODE: Traditional chat ───────────────────────────
+    else {
+      console.log('[CHAT-FLOW] ❌ NOT Study Mode - Routing to API.chat()');
+      console.log('[CHAT-FLOW] Calling API.chat(query, State.submode)...');
+      data = await API.chat(query, State.submode);
+      // Returns { text, cases } for normal/research
+      // Returns { sections }   for legacy study
+      // ─────────────────────────────────────────────────────────
+      removeTypingIndicator(typingId);
+      console.log('[CHAT-FLOW] ✅ API.chat() Response received:', {
+        hasData: !!data,
+        hasSections: !!data?.sections,
+        sectionsCount: data?.sections?.length || 0,
+        hasText: !!data?.text,
+        textLength: data?.text?.length || 0,
+      });
+      renderAIResponse(data);
+      console.log('[CHAT-FLOW] ✅ renderAIResponse() completed');
+    }
   } catch (err) {
     removeTypingIndicator(typingId);
     appendChatMessage('ai', '<em>Error contacting server. Check the console.</em>', State.submode);
@@ -245,6 +291,149 @@ function renderAIResponse(data) {
     data.citationsFlat || [],                // 14: citationsFlat
     data.caseSummary || null                 // 15: caseSummary
   );
+}
+
+/**
+ * STUDY MODE: Render multi-tab study output
+ * Converts API.studySearch() response to interactive tab interface
+ */
+function renderStudyResults(data) {
+  console.log('[STUDY-TABS] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('[STUDY-TABS] MULTI-TAB STUDY OUTPUT RENDERER');
+  console.log('[STUDY-TABS] Input data:', {
+    query: data?.query,
+    category: data?.category,
+    study_output_type: data?.study_output_type,
+    availableTabs: data?.available_tabs,
+    tabOrder: data?.tab_order,
+    outputsKeys: data?.outputs ? Object.keys(data.outputs) : [],
+    hasOutputs: !!data?.outputs,
+  });
+
+  if (!data.available_tabs || data.available_tabs.length === 0) {
+    console.warn('[STUDY-TABS] ❌ No tabs available in response');
+    appendChatMessage('ai', '<em>No study output generated. Please try a different query.</em>', 'study');
+    return;
+  }
+
+  console.log('[STUDY-TABS] ✅ Found', data.available_tabs.length, 'tabs:', data.available_tabs.join(', '));
+
+  // Convert study response to legacy sections format for compatibility with appendChatMessage
+  // Future: Could create a new specialized renderer for study mode
+  const sections = [];
+  
+  if (data.available_tabs && Array.isArray(data.available_tabs)) {
+    console.log('[STUDY-TABS] Processing tabs in order:', data.tab_order || data.available_tabs);
+    
+    for (const tabName of data.tab_order || data.available_tabs) {
+      const tabContent = data.outputs?.[tabName];
+      
+      // Check if content is an array (flashcards) or other structure
+      const isArray = Array.isArray(tabContent);
+      const isObject = tabContent && typeof tabContent === 'object' && !isArray;
+      const isString = typeof tabContent === 'string';
+      
+      console.log('[STUDY-TABS]   Tab:', tabName, '→', {
+        hasContent: !!tabContent,
+        contentType: typeof tabContent,
+        isArray,
+        isObject,
+        isString,
+        contentPreview: isString ? tabContent.substring(0, 60) : (isArray ? `Array[${tabContent.length}]` : 'Object'),
+      });
+      
+      if (tabContent) {
+        const section = {
+          output_type: tabName,
+          title: formatTabTitle(tabName),
+        };
+        
+        // Store array data as 'cards' property for flashcards
+        if (isArray) {
+          section.cards = tabContent;
+          console.log('[STUDY-TABS]     Stored as .cards array with', tabContent.length, 'items');
+        } 
+        // Store object data as properties  
+        else if (isObject) {
+          Object.assign(section, tabContent);
+          console.log('[STUDY-TABS]     Stored as object properties');
+        }
+        // Store string data as 'content' property (HTML)
+        else {
+          section.content = tabContent;
+          console.log('[STUDY-TABS]     Stored as .content string');
+        }
+        
+        sections.push(section);
+        console.log('[STUDY-TABS]   ✅ Added section:', tabName);
+      } else {
+        console.warn('[STUDY-TABS]   ❌ No content for tab:', tabName);
+      }
+    }
+  }
+
+  console.log('[STUDY-TABS] Generated', sections.length, 'sections from', data.available_tabs.length, 'tabs');
+  sections.forEach((sec, idx) => {
+    console.log(`[STUDY-TABS]   Section[${idx}]:`, {
+      type: sec.output_type,
+      title: sec.title,
+      hasContent: !!sec.content,
+      hasCards: !!sec.cards,
+      cardsCount: sec.cards?.length || 0,
+    });
+  });
+
+  // Use existing study mode rendering (appendChatMessage already handles sections)
+  console.log('[STUDY-TABS] ✅ Calling appendChatMessage with', sections.length, 'study sections');
+  appendChatMessage(
+    'ai',                    // role
+    null,                    // text
+    'study',                 // submode
+    [],                      // cases
+    sections,                // studySections ← will be rendered as tabs
+    [],                      // tabularResults
+    null,                    // completeExplanation
+    'study',                 // intent
+    false,                   // isUnique
+    'study_multi_tab',       // outputType
+    [],                      // judgmentParagraphs
+    {                        // caseMetadata
+      case_name: data.case_name || 'Unknown',
+      case_id: data.case_id || null,
+      study_category: data.category,
+    },
+    null,                    // citationTree
+    [],                      // citationsFlat
+    null                     // caseSummary
+  );
+  console.log('[STUDY-TABS] ✅ appendChatMessage completed');
+}
+
+/**
+ * Format tab name for display
+ * Converts snake_case to Title Case
+ */
+function formatTabTitle(tabName) {
+  const titles = {
+    'case_explanation': 'Case Explanation',
+    'case_brief': 'Case Brief',
+    'flashcards': 'Flashcards',
+    'arguments': 'Arguments',
+    'ratio_obiter': 'Ratio & Obiter',
+    'legal_concept': 'Concept',
+    'concept_comparison': 'Comparison',
+    'deep_dive': 'Deep Dive',
+    'study_notes': 'Study Notes',
+    'qa_format': 'Q&A',
+    'bare_act_analysis': 'Bare Act',
+    'comparative_analysis': 'Comparison',
+    'key_terms': 'Key Terms',
+  };
+  
+  return titles[tabName] || tabName
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
 
 function appendChatMessage(role, text = null, submode = null, cases = [], studySections = null, 
@@ -579,7 +768,31 @@ function appendChatMessage(role, text = null, submode = null, cases = [], studyS
     }
   }
   
-  if (studySections)  bubble.appendChild(buildStudyOutput(studySections));
+  // ✅ STUDY MODE: Render study sections (tabs)
+  if (studySections) {
+    console.log('[STUDY-APPEND] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[STUDY-APPEND] ✅ STUDY SECTIONS DETECTED');
+    console.log('[STUDY-APPEND] Study sections count:', studySections?.length);
+    if (Array.isArray(studySections)) {
+      studySections.forEach((sec, idx) => {
+        console.log(`[STUDY-APPEND]   Section[${idx}]:`, {
+          output_type: sec.output_type,
+          title: sec.title,
+          hasContent: !!sec.content,
+          contentLength: sec.content?.length || 0,
+        });
+      });
+    }
+    console.log('[STUDY-APPEND] Calling buildStudyOutput(studySections)...');
+    const studyElement = buildStudyOutput(studySections);
+    console.log('[STUDY-APPEND] ✅ buildStudyOutput returned:', {
+      elementTag: studyElement?.tagName,
+      elementClass: studyElement?.className,
+      hasChildren: studyElement?.children?.length || 0,
+    });
+    bubble.appendChild(studyElement);
+    console.log('[STUDY-APPEND] ✅ Study element appended to bubble');
+  }
 
   row.appendChild(avatar);
   row.appendChild(bubble);
@@ -735,6 +948,39 @@ function renderCurrentPage() {
     const arrow  = score >= 85 ? '↑'    : score >= 65 ? '→'      : '↓';
     const label  = score >= 85 ? 'High' : score >= 65 ? 'Medium' : 'Low';
 
+    // Get precedent status from search results
+    const precedentStatus = c.precedent_status || 'unknown';
+    const precedentStrength = c.precedent_strength || 0;
+    
+    // Render precedent badge
+    let badgeIcon = '❓';
+    let badgeLabel = 'Unknown';
+    let badgeClass = 'precedent-badge--unknown';
+    
+    if (precedentStatus && precedentStatus !== 'unknown') {
+      if (['active_authority', 'cited', 'reliable'].includes(precedentStatus)) {
+        badgeIcon = '✅';
+        badgeLabel = precedentStatus.replace(/_/g, ' ');
+        badgeLabel = badgeLabel.charAt(0).toUpperCase() + badgeLabel.slice(1);
+        if (precedentStrength) badgeLabel += ` (${precedentStrength})`;
+        badgeClass = 'precedent-badge--good';
+      } else if (['limited', 'limited_precedent'].includes(precedentStatus)) {
+        badgeIcon = '⚠️';
+        badgeLabel = 'Limited';
+        if (precedentStrength) badgeLabel += ` (${precedentStrength})`;
+        badgeClass = 'precedent-badge--distinguished';
+      } else if (precedentStatus === 'dubious') {
+        badgeIcon = '⚠️';
+        badgeLabel = 'Dubious';
+        if (precedentStrength) badgeLabel += ` (${precedentStrength})`;
+        badgeClass = 'precedent-badge--overruled';
+      } else {
+        badgeIcon = '❓';
+        badgeLabel = precedentStatus;
+        if (precedentStrength) badgeLabel += ` (${precedentStrength})`;
+      }
+    }
+
     const tr = mk('tr');
     tr.dataset.caseId = c.id;
     tr.innerHTML = `
@@ -752,8 +998,8 @@ function renderCurrentPage() {
         </span>
       </td>
       <td class="td-precedent-status">
-        <span class="precedent-badge precedent-badge--loading" title="Checking precedent status...">
-          ⏳ Loading...
+        <span class="precedent-badge ${badgeClass}" title="Precedent status: ${precedentStatus}">
+          ${badgeIcon} ${badgeLabel}
         </span>
       </td>
       <td><button class="btn-open" data-id="${c.id}">Open ↓</button></td>
@@ -761,68 +1007,6 @@ function renderCurrentPage() {
     tbody.appendChild(tr);
   });
 
-  // Fetch precedent status for all cases on this page (async, non-blocking)
-  if (caseIds.length > 0) {
-    API.getBulkPrecedentStatus(caseIds)
-      .then(data => {
-        if (data?.statuses) {
-          Object.entries(data.statuses).forEach(([caseId, status]) => {
-            const row = tbody.querySelector(`tr[data-case-id="${caseId}"]`);
-            if (row) {
-              const statusCell = row.querySelector('.td-precedent-status');
-              if (statusCell) {
-                const badge = statusCell.querySelector('.precedent-badge');
-                
-                // Map status to display
-                let icon = '❓';
-                let labelText = 'Unknown';
-                let className = 'precedent-badge--unknown';
-                
-                switch (status.status) {
-                  case 'good_law':
-                    icon = '✅';
-                    labelText = `Good Law (${status.strength})`;
-                    className = 'precedent-badge--good';
-                    break;
-                  case 'overruled':
-                    icon = '⚠️';
-                    labelText = 'Overruled';
-                    className = 'precedent-badge--overruled';
-                    break;
-                  case 'distinguished':
-                    icon = '🔹';
-                    labelText = 'Distinguished';
-                    className = 'precedent-badge--distinguished';
-                    break;
-                  case 'doubted':
-                    icon = '❔';
-                    labelText = 'Doubted';
-                    className = 'precedent-badge--doubted';
-                    break;
-                  default:
-                    icon = '❓';
-                    labelText = 'Unknown';
-                    className = 'precedent-badge--unknown';
-                }
-                
-                badge.className = `precedent-badge ${className}`;
-                badge.innerHTML = `${icon} ${labelText}`;
-                badge.title = status.label || 'Precedent status';
-              }
-            }
-          });
-        }
-      })
-      .catch(err => {
-        console.warn('[API] Could not fetch precedent statuses:', err);
-        // Badges remain as "Loading" or show error state
-        tbody.querySelectorAll('.precedent-badge--loading').forEach(b => {
-          b.className = 'precedent-badge precedent-badge--unknown';
-          b.innerHTML = '❓ Status unavailable';
-          b.title = 'Precedent status service unavailable';
-        });
-      });
-  }
 
   // Wire up Open buttons
   tbody.querySelectorAll('.btn-open').forEach(btn =>
@@ -1077,7 +1261,144 @@ function makeTokenPill(token, index, withSearch) {
 
 
 // ─────────────────────────────────────────────────────────────
-// 9. INLINE CASE VIEWER
+// 9. ISSUE SPOTTER
+// ─────────────────────────────────────────────────────────────
+function initIssueSporter() {
+  // Tab switching between Search and Issue Spotter
+  $$('.trad-mode-tab').forEach(tab =>
+    tab.addEventListener('click', () => switchTradMode(tab.dataset.tradMode))
+  );
+
+  // Issue Spotter form
+  $('btn-spot-issues').addEventListener('click', spotIssues);
+  $('issue-facts-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.ctrlKey) spotIssues();
+  });
+
+  // Start Over button
+  $('btn-new-issue-spot').addEventListener('click', resetIssueSporter);
+}
+
+function switchTradMode(mode) {
+  // Update tabs
+  $$('.trad-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.tradMode === mode));
+
+  // Update views
+  $('trad-search-mode').classList.toggle('active', mode === 'search');
+  $('trad-issue-spotter').classList.toggle('active', mode === 'issue-spotter');
+
+  // Reset search/spotter when switching
+  if (mode === 'search') {
+    resetIssueSporter();
+  } else if (mode === 'issue-spotter') {
+    // Clear any search results
+    $('results-table-wrap').classList.add('hidden');
+    $('results-empty').classList.remove('hidden');
+  }
+}
+
+async function spotIssues() {
+  const facts = $('issue-facts-input').value.trim();
+  const context = $('issue-context-input').value.trim();
+
+  if (!facts) {
+    alert('Please enter client facts to analyze');
+    return;
+  }
+
+  // Show loading
+  $('issue-results-loading').classList.remove('hidden');
+  $('issue-results-content').innerHTML = '';
+  $('issue-results').classList.remove('hidden');
+  $('issue-results-empty').classList.add('hidden');
+
+  try {
+    // ── API CALL ───────────────────────────────────────────────
+    const data = await API.spotIssues(facts, context);
+    // ────────────────────────────────────────────────────────────
+
+    $('issue-results-loading').classList.add('hidden');
+    renderIssueResults(data.issues || []);
+  } catch (err) {
+    $('issue-results-loading').classList.add('hidden');
+    console.error('[ISSUE SPOTTER] Error:', err);
+    $('issue-results-content').innerHTML = '<p style="color: var(--error); text-align: center;">Failed to analyze issues. Please try again.</p>';
+  }
+}
+
+function renderIssueResults(issues) {
+  const container = $('issue-results-content');
+  container.innerHTML = '';
+
+  if (!issues.length) {
+    $('issue-results').classList.add('hidden');
+    $('issue-results-empty').classList.remove('hidden');
+    return;
+  }
+
+  issues.forEach(issue => {
+    const card = mk('div', 'issue-card');
+
+    // Header with priority badge
+    const header = mk('div', 'issue-card-header');
+    const badge = mk('div', `issue-priority-badge issue-priority-badge--${issue.priority}`);
+    badge.textContent = issue.priority.toUpperCase();
+    const title = mk('div', 'issue-title');
+    title.textContent = issue.title;
+    header.appendChild(badge);
+    header.appendChild(title);
+    card.appendChild(header);
+
+    // Acts
+    if (issue.applicable_acts && issue.applicable_acts.length) {
+      const actsDiv = mk('div', 'issue-acts');
+      issue.applicable_acts.forEach(act => {
+        const tag = mk('span', 'issue-act-tag');
+        tag.textContent = act;
+        actsDiv.appendChild(tag);
+      });
+      card.appendChild(actsDiv);
+    }
+
+    // Explanation
+    const expl = mk('div', 'issue-explanation');
+    expl.textContent = issue.explanation;
+    card.appendChild(expl);
+
+    // Suggested searches
+    if (issue.suggested_search && issue.suggested_search.length) {
+      const searchDiv = mk('div', 'issue-searches');
+      issue.suggested_search.forEach(query => {
+        const btn = mk('button', 'issue-search-btn');
+        btn.textContent = query;
+        btn.addEventListener('click', () => {
+          // Switch to search mode and perform search
+          switchTradMode('search');
+          $('token-raw-input').value = query;
+          runSearch();
+        });
+        searchDiv.appendChild(btn);
+      });
+      card.appendChild(searchDiv);
+    }
+
+    container.appendChild(card);
+  });
+
+  container.style.display = 'flex';
+}
+
+function resetIssueSporter() {
+  $('issue-facts-input').value = '';
+  $('issue-context-input').value = '';
+  $('issue-results').classList.add('hidden');
+  $('issue-results-empty').classList.remove('hidden');
+  $('issue-facts-input').focus();
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// 10. INLINE CASE VIEWER
 // ─────────────────────────────────────────────────────────────
 function toggleInlineViewer(caseId, host, btn, singleMode = false) {
   console.log(`[VIEWER] toggleInlineViewer called for case: ${caseId}`);
@@ -1176,6 +1497,12 @@ function buildCaseViewer(c) {
     { id: 'summary',   label: 'Summary' },
     { id: 'facts',     label: 'Key Facts' },
     { id: 'judgement', label: 'Judgement' },
+    { id: 'brief',     label: 'Quick Brief' },
+    { id: 'test',      label: 'Legal Test' },
+    { id: 'arguments', label: 'Arguments' },
+    { id: 'counter',   label: 'Weaknesses' },
+    { id: 'strategy',  label: 'Strategy' },
+    { id: 'factlaw',   label: 'Fact vs Law' },
     { id: 'citations', label: `Citations (${c.cited_in?.length || 0})` },
     { id: 'pdf',       label: 'PDF Viewer' },
   ];
@@ -1215,6 +1542,30 @@ function buildCaseViewer(c) {
   const cp = mk('div', 'iv-panel hidden'); cp.dataset.panel = 'citations';
   cp.appendChild(buildCitationsPanel(c));
 
+  // Quick Brief (DAY 3)
+  const bp = mk('div', 'iv-panel hidden'); bp.dataset.panel = 'brief';
+  bp.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading quick brief...</div>';
+  
+  // Legal Test (DAY 3)
+  const tp = mk('div', 'iv-panel hidden'); tp.dataset.panel = 'test';
+  tp.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading legal test...</div>';
+
+  // Arguments (DAYS 4-6)
+  const ap = mk('div', 'iv-panel hidden'); ap.dataset.panel = 'arguments';
+  ap.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading arguments...</div>';
+
+  // Counter-Arguments (Weaknesses)
+  const ctp = mk('div', 'iv-panel hidden'); ctp.dataset.panel = 'counter';
+  ctp.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading weaknesses analysis...</div>';
+
+  // Strategy
+  const stp = mk('div', 'iv-panel hidden'); stp.dataset.panel = 'strategy';
+  stp.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading litigation strategy...</div>';
+
+  // Fact vs Law
+  const flp = mk('div', 'iv-panel hidden'); flp.dataset.panel = 'factlaw';
+  flp.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading fact-law analysis...</div>';
+
   // PDF tab (triggers side panel)
   const pp = mk('div', 'iv-panel pdf-trigger-panel hidden'); pp.dataset.panel = 'pdf';
   const tm = mk('div', 'pdf-trigger-msg');
@@ -1222,16 +1573,319 @@ function buildCaseViewer(c) {
   const tx = mk('span'); tx.textContent = 'Opening PDF in side panel…';
   tm.appendChild(ti); tm.appendChild(tx); pp.appendChild(tm);
 
-  [sp, fp, jp, cp, pp].forEach(p => body.appendChild(p));
+  [sp, fp, jp, cp, bp, tp, ap, ctp, stp, flp, pp].forEach(p => body.appendChild(p));
   viewer.appendChild(header); viewer.appendChild(tabBar); viewer.appendChild(body);
 
   // Tab switching
   tabBar.querySelectorAll('.iv-tab').forEach(tab =>
-    tab.addEventListener('click', () => {
+    tab.addEventListener('click', async () => {
       tabBar.querySelectorAll('.iv-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       const tgt = tab.dataset.tab;
       body.querySelectorAll('.iv-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tgt));
+      
+      // Load Quick Brief on demand
+      if (tgt === 'brief' && bp.innerHTML.includes('Loading')) {
+        try {
+          const brief = await API.getQuickBrief(c.id, false);
+          bp.innerHTML = `
+            <div style="padding: 20px;">
+              <div style="background: rgba(255,200,100,0.1); border: 1px solid rgba(255,200,100,0.3); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <p style="margin: 0; font-weight: 600; color: #ffa94d; font-size: 14px;">Held:</p>
+                <p style="margin: 8px 0 0; color: var(--c-hi); line-height: 1.6;">${brief.one_liner}</p>
+              </div>
+              <div>
+                <p style="color: var(--c-dim); font-size: 12px; margin-bottom: 8px;">30-second summary:</p>
+                <p style="color: var(--c-mid); line-height: 1.6;">${brief.summary_30s}</p>
+              </div>
+            </div>
+          `;
+        } catch (e) {
+          bp.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load quick brief</p>';
+        }
+      }
+      
+      // Load Legal Test on demand
+      if (tgt === 'test' && tp.innerHTML.includes('Loading')) {
+        try {
+          const test = await API.getLegalTest(c.id);
+          if (test.has_legal_test && test.steps) {
+            let html = `<div style="padding: 20px; max-width: 600px;">
+              <h3 style="color: var(--c-hi); margin-bottom: 20px; font-size: 16px;">${test.test_name || 'Multi-part Test'}</h3>
+              <div style="display: flex; flex-direction: column; gap: 16px;">`;
+            test.steps.forEach((step, idx) => {
+              html += `
+                <div style="border-left: 3px solid var(--accent); padding-left: 16px;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <span style="width: 24px; height: 24px; background: var(--accent); color: var(--c-inverse); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;">${step.step_number}</span>
+                    <span style="color: var(--c-hi); font-weight: 600;">${step.label}</span>
+                    ${step.para_reference ? `<span style="font-size: 11px; color: var(--c-sub); margin-left: auto;">${step.para_reference}</span>` : ''}
+                  </div>
+                  <p style="color: var(--c-mid); line-height: 1.5; margin: 0 0 8px 0;">${step.description}</p>
+                  ${step.how_applied ? `<p style="color: var(--c-sub); font-size: 13px; font-style: italic; margin: 0;">✓ ${step.how_applied}</p>` : ''}
+                </div>
+              `;
+            });
+            html += '</div></div>';
+            tp.innerHTML = html;
+          } else {
+            tp.innerHTML = '<div style="padding: 20px; color: var(--c-sub); text-align: center;">This case does not have an identified legal test.</div>';
+          }
+        } catch (e) {
+          tp.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load legal test</p>';
+        }
+      }
+
+      // Load Arguments on demand (DAYS 4-6)
+      if (tgt === 'arguments' && ap.innerHTML.includes('Loading')) {
+        try {
+          // Try cached first
+          let args;
+          try {
+            args = await API.getArgumentsCached(c.id);
+          } catch {
+            // Not cached, generate
+            const result = await API.generateArguments(c.id, false);
+            args = result.arguments;
+          }
+
+          if (args && args.petitioner_arguments) {
+            let html = `<div style="padding: 20px; max-width: 800px;">
+              <div style="margin-bottom: 24px;">
+                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                  <div style="flex: 1;">
+                    <h4 style="color: var(--c-hi); margin: 0 0 12px; font-size: 14px; font-weight: 600;">PETITIONER: ${args.petitioner_name || 'Petitioner'}</h4>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">`;
+            
+            (args.petitioner_arguments || []).forEach(arg => {
+              html += `
+                <div style="background: var(--glass-xs); border-left: 3px solid #7eb3f5; padding: 12px; border-radius: 4px;">
+                  <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 6px; font-size: 13px;">${arg.point}</p>
+                  <p style="color: var(--c-mid); font-size: 12px; line-height: 1.5; margin: 0 0 6px;">${arg.detail}</p>
+                  <span style="display: inline-block; padding: 2px 8px; background: ${arg.strength === 'strong' ? '#34c97a' : arg.strength === 'moderate' ? '#e5963a' : '#999'}; color: white; border-radius: 3px; font-size: 10px; font-weight: 600;">STRENGTH: ${(arg.strength || 'moderate').toUpperCase()}</span>
+                  ${arg.para_ref ? `<span style="color: var(--c-sub); font-size: 11px; margin-left: 8px;">Para ${arg.para_ref}</span>` : ''}
+                </div>
+              `;
+            });
+            html += `</div></div>
+                  <div style="flex: 1;">
+                    <h4 style="color: var(--c-hi); margin: 0 0 12px; font-size: 14px; font-weight: 600;">RESPONDENT: ${args.respondent_name || 'Respondent'}</h4>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">`;
+            
+            (args.respondent_arguments || []).forEach(arg => {
+              html += `
+                <div style="background: var(--glass-xs); border-left: 3px solid #ffa94d; padding: 12px; border-radius: 4px;">
+                  <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 6px; font-size: 13px;">${arg.point}</p>
+                  <p style="color: var(--c-mid); font-size: 12px; line-height: 1.5; margin: 0 0 6px;">${arg.detail}</p>
+                  <span style="display: inline-block; padding: 2px 8px; background: ${arg.strength === 'strong' ? '#34c97a' : arg.strength === 'moderate' ? '#e5963a' : '#999'}; color: white; border-radius: 3px; font-size: 10px; font-weight: 600;">STRENGTH: ${(arg.strength || 'moderate').toUpperCase()}</span>
+                  ${arg.para_ref ? `<span style="color: var(--c-sub); font-size: 11px; margin-left: 8px;">Para ${arg.para_ref}</span>` : ''}
+                </div>
+              `;
+            });
+            html += `</div></div></div>`;
+
+            // Court finding
+            if (args.court_finding) {
+              html += `
+                <div style="background: var(--accent-dim); border-left: 4px solid var(--accent); padding: 16px; border-radius: 4px; margin-bottom: 16px;">
+                  <p style="color: var(--accent); font-weight: 600; margin: 0 0 8px; font-size: 13px;">COURT'S FINDING</p>
+                  <p style="color: var(--c-hi); line-height: 1.6; margin: 0;">${args.court_finding}</p>
+                  ${args.winning_side ? `<p style="color: var(--accent); font-weight: 600; margin: 8px 0 0; font-size: 12px;">DECIDED IN FAVOR OF: ${args.winning_side.toUpperCase()}</p>` : ''}
+                </div>
+              `;
+            }
+
+            // Legal test if present
+            if (args.key_legal_test) {
+              html += `
+                <div style="padding: 16px; background: var(--glass-sm); border-radius: 4px;">
+                  <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 12px; font-size: 13px;">KEY LEGAL TEST: ${args.key_legal_test}</p>
+                  ${args.test_parts ? `<ol style="color: var(--c-mid); font-size: 13px; line-height: 1.6; margin: 0; padding-left: 20px;">
+                    ${args.test_parts.map(part => `<li>${part}</li>`).join('')}
+                  </ol>` : ''}
+                </div>
+              `;
+            }
+
+            html += '</div>';
+            ap.innerHTML = html;
+          } else {
+            ap.innerHTML = '<p style="padding: 20px; color: var(--c-sub); text-align: center;">Arguments could not be extracted for this case.</p>';
+          }
+        } catch (e) {
+          ap.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load arguments</p>';
+        }
+      }
+
+      // Load Counter-Arguments on demand
+      if (tgt === 'counter' && ctp.innerHTML.includes('Loading')) {
+        try {
+          const result = await API.counterArguments(c.id, false);
+          if (result.petitioner_weaknesses || result.respondent_weaknesses) {
+            let html = `<div style="padding: 20px; max-width: 900px;">
+              <h3 style="color: var(--c-hi); margin-bottom: 16px; font-size: 16px;">Weaknesses Analysis</h3>`;
+            
+            if (result.petitioner_weaknesses && result.petitioner_weaknesses.length > 0) {
+              html += `<div style="margin-bottom: 24px;">
+                <h4 style="color: #7eb3f5; margin: 0 0 12px; font-size: 14px; font-weight: 600;">PETITIONER WEAKNESSES</h4>`;
+              result.petitioner_weaknesses.forEach(w => {
+                const sevColor = w.severity === 'fatal' ? '#ff6b6b' : w.severity === 'serious' ? '#e5963a' : '#999';
+                html += `
+                  <div style="background: var(--glass-xs); border-left: 3px solid #7eb3f5; padding: 12px; margin-bottom: 10px; border-radius: 4px;">
+                    <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 6px; font-size: 13px;">${w.argument}</p>
+                    <p style="color: var(--c-mid); font-size: 12px; margin: 0 0 6px; line-height: 1.5;"><strong>Weakness:</strong> ${w.weakness}</p>
+                    <p style="color: var(--c-mid); font-size: 12px; margin: 0 0 6px; line-height: 1.5;"><strong>Counter:</strong> ${w.counter}</p>
+                    <span style="display: inline-block; padding: 3px 10px; background: ${sevColor}; color: white; border-radius: 3px; font-size: 10px; font-weight: 600;">SEVERITY: ${w.severity.toUpperCase()}</span>
+                  </div>
+                `;
+              });
+              html += `</div>`;
+            }
+            
+            if (result.respondent_weaknesses && result.respondent_weaknesses.length > 0) {
+              html += `<div style="margin-bottom: 24px;">
+                <h4 style="color: #ffa94d; margin: 0 0 12px; font-size: 14px; font-weight: 600;">RESPONDENT WEAKNESSES</h4>`;
+              result.respondent_weaknesses.forEach(w => {
+                const sevColor = w.severity === 'fatal' ? '#ff6b6b' : w.severity === 'serious' ? '#e5963a' : '#999';
+                html += `
+                  <div style="background: var(--glass-xs); border-left: 3px solid #ffa94d; padding: 12px; margin-bottom: 10px; border-radius: 4px;">
+                    <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 6px; font-size: 13px;">${w.argument}</p>
+                    <p style="color: var(--c-mid); font-size: 12px; margin: 0 0 6px; line-height: 1.5;"><strong>Weakness:</strong> ${w.weakness}</p>
+                    <p style="color: var(--c-mid); font-size: 12px; margin: 0 0 6px; line-height: 1.5;"><strong>Counter:</strong> ${w.counter}</p>
+                    <span style="display: inline-block; padding: 3px 10px; background: ${sevColor}; color: white; border-radius: 3px; font-size: 10px; font-weight: 600;">SEVERITY: ${w.severity.toUpperCase()}</span>
+                  </div>
+                `;
+              });
+              html += `</div>`;
+            }
+            
+            if (result.overall_assessment) {
+              html += `
+                <div style="padding: 16px; background: var(--accent-dim); border-radius: 4px;">
+                  <p style="color: var(--accent); font-weight: 600; margin: 0 0 8px; font-size: 13px;">OVERALL ASSESSMENT</p>
+                  <p style="color: var(--c-hi); margin: 0 0 8px;"><strong>Stronger Side:</strong> ${result.overall_assessment.stronger_side?.toUpperCase() || 'N/A'}</p>
+                  <p style="color: var(--c-mid); margin: 0 0 8px;">${result.overall_assessment.decisive_issue || ''}</p>
+                  <p style="color: var(--c-sub); font-size: 12px; margin: 0; font-style: italic;">Swing Factor: ${result.overall_assessment.swing_factor || ''}</p>
+                </div>
+              `;
+            }
+            
+            html += `</div>`;
+            ctp.innerHTML = html;
+          } else {
+            ctp.innerHTML = '<p style="padding: 20px; color: var(--c-sub); text-align: center;">No weaknesses analysis available.</p>';
+          }
+        } catch (e) {
+          ctp.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load weaknesses analysis</p>';
+        }
+      }
+
+      // Load Strategy on demand
+      if (tgt === 'strategy' && stp.innerHTML.includes('Loading')) {
+        try {
+          const result = await API.caseStrategy(c.id, 'petitioner', false);
+          if (result.side) {
+            let html = `<div style="padding: 20px; max-width: 900px;">
+              <h3 style="color: var(--c-hi); margin-bottom: 12px; font-size: 16px;">Litigation Strategy — ${result.side?.toUpperCase()}</h3>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; font-size: 12px;">
+                <div style="background: var(--glass-xs); padding: 10px; border-radius: 4px;">
+                  <span style="color: var(--c-sub);">Win Probability</span><br/>
+                  <span style="color: var(--c-hi); font-weight: 600; font-size: 14px;">${result.win_probability?.toUpperCase() || '—'}</span>
+                </div>
+                <div style="background: var(--glass-xs); padding: 10px; border-radius: 4px;">
+                  <span style="color: var(--c-sub);">Reason</span><br/>
+                  <span style="color: var(--c-mid); font-size: 11px;">${result.win_probability_reason || '—'}</span>
+                </div>
+              </div>`;
+            
+            if (result.primary_strategy) {
+              html += `<div style="background: var(--accent-dim); border-left: 4px solid var(--accent); padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+                <p style="color: var(--accent); font-weight: 600; margin: 0 0 8px; font-size: 12px;">PRIMARY STRATEGY</p>
+                <p style="color: var(--c-mid); margin: 0; line-height: 1.5; font-size: 12px;">${result.primary_strategy}</p>
+              </div>`;
+            }
+            
+            if (result.strongest_arguments && result.strongest_arguments.length > 0) {
+              html += `<div style="margin-bottom: 16px;">
+                <h4 style="color: #34c97a; margin: 0 0 8px; font-size: 12px; font-weight: 600;">STRONGEST ARGUMENTS (Lead With These)</h4>`;
+              result.strongest_arguments.slice(0, 3).forEach(arg => {
+                html += `
+                  <div style="background: var(--glass-xs); border-left: 3px solid #34c97a; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 11px;">
+                    <p style="color: var(--c-hi); margin: 0 0 4px; font-weight: 600;">${arg.argument}</p>
+                    <p style="color: var(--c-mid); margin: 0 0 4px;"><span style="opacity: 0.7;">Why Strong:</span> ${arg.why_strong}</p>
+                    <p style="color: var(--c-sub); margin: 0 0 4px;"><span style="opacity: 0.7;">How to Present:</span> ${arg.how_to_present}</p>
+                    <span style="color: var(--accent); font-weight: 600;">${arg.supporting_law}</span>
+                  </div>
+                `;
+              });
+              html += `</div>`;
+            }
+            
+            if (result.how_to_counter_opposition && result.how_to_counter_opposition.length > 0) {
+              html += `<div style="margin-bottom: 16px;">
+                <h4 style="color: #ffa94d; margin: 0 0 8px; font-size: 12px; font-weight: 600;">HOW TO COUNTER OPPOSITION</h4>`;
+              result.how_to_counter_opposition.slice(0, 3).forEach(counter => {
+                html += `
+                  <div style="background: var(--glass-xs); border-left: 3px solid #ffa94d; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 11px;">
+                    <p style="color: var(--c-hi); margin: 0 0 4px; font-weight: 600;">Their Point: ${counter.their_point}</p>
+                    <p style="color: var(--c-mid); margin: 0;">Your Response: ${counter.your_response}</p>
+                  </div>
+                `;
+              });
+              html += `</div>`;
+            }
+            
+            html += `</div>`;
+            stp.innerHTML = html;
+          } else {
+            stp.innerHTML = '<p style="padding: 20px; color: var(--c-sub); text-align: center;">Strategy not available.</p>';
+          }
+        } catch (e) {
+          stp.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load strategy</p>';
+        }
+      }
+
+      // Load Fact vs Law on demand
+      if (tgt === 'factlaw' && flp.innerHTML.includes('Loading')) {
+        try {
+          const result = await API.factLawSeparation(c.id, false);
+          if (result.classifications && result.classifications.length > 0) {
+            let html = `<div style="padding: 20px; max-width: 900px;">
+              <h3 style="color: var(--c-hi); margin-bottom: 16px; font-size: 16px;">Fact vs Law Classification</h3>`;
+            
+            // Summary section
+            if (result.fact_law_summary) {
+              html += `<div style="background: var(--glass-sm); border-radius: 4px; padding: 12px; margin-bottom: 16px;">
+                <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 8px; font-size: 13px;">BURDEN OF PROOF</p>
+                <p style="color: var(--c-mid); font-size: 12px; line-height: 1.5; margin: 0;">${result.fact_law_summary.burden_summary || 'Burden distribution not determined'}</p>
+              </div>`;
+            }
+            
+            // Classifications list
+            html += `<div style="display: flex; flex-direction: column; gap: 10px;">`;
+            result.classifications.slice(0, 20).forEach(cls => {
+              const typeColor = cls.type === 'fact' ? '#7eb3f5' : cls.type === 'law' ? '#34c97a' : cls.type === 'ratio' ? '#e5963a' : '#999';
+              html += `
+                <div style="background: var(--glass-xs); border-left: 4px solid ${typeColor}; padding: 10px; border-radius: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
+                    <span style="color: var(--c-hi); font-weight: 600; font-size: 12px;">Para ${cls.para_number}</span>
+                    <span style="padding: 2px 8px; background: ${typeColor}22; color: ${typeColor}; border-radius: 3px; font-size: 10px; font-weight: 600;">${cls.type.toUpperCase()}</span>
+                  </div>
+                  <p style="color: var(--c-mid); font-size: 11px; margin: 0 0 6px; line-height: 1.4;">${cls.summary}</p>
+                  ${cls.burden_of_proof && cls.burden_of_proof.present ? `<p style="color: var(--c-sub); font-size: 10px; margin: 0;"><strong>Burden:</strong> ${cls.burden_of_proof.party} must prove: ${cls.burden_of_proof.on_issue}</p>` : ''}
+                </div>
+              `;
+            });
+            html += `</div></div>`;
+            flp.innerHTML = html;
+          } else {
+            flp.innerHTML = '<p style="padding: 20px; color: var(--c-sub); text-align: center;">Fact-law analysis not available.</p>';
+          }
+        } catch (e) {
+          flp.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load fact-law analysis</p>';
+        }
+      }
+      
       if (tgt === 'pdf') openPDFPanel(c);
     })
   );
@@ -1302,6 +1956,12 @@ function buildFullCaseViewer(caseMetadata, judgmentParagraphs, citationsFlat, ca
     { id: 'summary',   label: 'Summary' },
     { id: 'facts',     label: 'Key Facts' },
     { id: 'judgement', label: 'Judgement' },
+    { id: 'brief',     label: 'Quick Brief' },
+    { id: 'test',      label: 'Legal Test' },
+    { id: 'arguments', label: 'Arguments' },
+    { id: 'counter',   label: 'Weaknesses' },
+    { id: 'strategy',  label: 'Strategy' },
+    { id: 'factlaw',   label: 'Fact vs Law' },
     { id: 'citations', label: `Citations (${citationsFlat?.length || 0})` },
     { id: 'pdf',       label: 'PDF Viewer' },
   ];
@@ -1385,6 +2045,36 @@ function buildFullCaseViewer(caseMetadata, judgmentParagraphs, citationsFlat, ca
   } else {
     citationsPanel.appendChild(buildResearchCitationsTable(citationsFlat));
   }
+
+  // --- QUICK BRIEF ---
+  const briefPanel = mk('div', 'rv-panel hidden', 'brief');
+  briefPanel.dataset.panel = 'brief';
+  briefPanel.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading quick brief...</div>';
+
+  // --- LEGAL TEST ---
+  const testPanel = mk('div', 'rv-panel hidden', 'test');
+  testPanel.dataset.panel = 'test';
+  testPanel.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading legal test...</div>';
+
+  // --- ARGUMENTS ---
+  const argumentsPanel = mk('div', 'rv-panel hidden', 'arguments');
+  argumentsPanel.dataset.panel = 'arguments';
+  argumentsPanel.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading arguments...</div>';
+
+  // --- COUNTER-ARGUMENTS (WEAKNESSES) ---
+  const counterPanel = mk('div', 'rv-panel hidden', 'counter');
+  counterPanel.dataset.panel = 'counter';
+  counterPanel.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading weaknesses analysis...</div>';
+
+  // --- STRATEGY ---
+  const strategyPanel = mk('div', 'rv-panel hidden', 'strategy');
+  strategyPanel.dataset.panel = 'strategy';
+  strategyPanel.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading litigation strategy...</div>';
+
+  // --- FACT vs LAW ---
+  const factlawPanel = mk('div', 'rv-panel hidden', 'factlaw');
+  factlawPanel.dataset.panel = 'factlaw';
+  factlawPanel.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--c-sub);">Loading fact-law analysis...</div>';
   
   // --- PDF ---
   const pdfPanel = mk('div', 'rv-panel hidden pdf-trigger', 'pdf');
@@ -1402,7 +2092,7 @@ function buildFullCaseViewer(caseMetadata, judgmentParagraphs, citationsFlat, ca
   // ========================================================================
   // ASSEMBLY
   // ========================================================================
-  [summaryPanel, factsPanel, judgementPanel, citationsPanel, pdfPanel].forEach(p => body.appendChild(p));
+  [summaryPanel, factsPanel, judgementPanel, briefPanel, testPanel, argumentsPanel, counterPanel, strategyPanel, factlawPanel, citationsPanel, pdfPanel].forEach(p => body.appendChild(p));
   viewer.appendChild(header);
   viewer.appendChild(tabBar);
   viewer.appendChild(body);
@@ -1410,14 +2100,275 @@ function buildFullCaseViewer(caseMetadata, judgmentParagraphs, citationsFlat, ca
   // ========================================================================
   // TAB SWITCHING
   // ========================================================================
+  const requestInProgress = new Set(); // Track which tabs have requests in flight
+  
   tabBar.querySelectorAll('.rv-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
+    tab.addEventListener('click', async () => {
       tabBar.querySelectorAll('.rv-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       const tid = tab.dataset.tab;
       body.querySelectorAll('.rv-panel').forEach(p => {
         p.classList.toggle('hidden', p.dataset.panel !== tid);
       });
+
+      // Skip if request already in progress for this tab
+      if (requestInProgress.has(tid)) return;
+      requestInProgress.add(tid);
+
+      // Load Quick Brief on demand
+      if (tid === 'brief' && briefPanel.innerHTML.includes('Loading')) {
+        try {
+          const brief = await API.getQuickBrief(caseData.id, false);
+          briefPanel.innerHTML = `
+            <div style="padding: 20px;">
+              <div style="background: rgba(255,200,100,0.1); border: 1px solid rgba(255,200,100,0.3); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <p style="margin: 0; font-weight: 600; color: #ffa94d; font-size: 14px;">Held:</p>
+                <p style="margin: 8px 0 0; color: var(--c-hi); line-height: 1.6;">${brief.one_liner}</p>
+              </div>
+              <div>
+                <p style="color: var(--c-dim); font-size: 12px; margin-bottom: 8px;">30-second summary:</p>
+                <p style="color: var(--c-mid); line-height: 1.6;">${brief.summary_30s}</p>
+              </div>
+            </div>
+          `;
+          requestInProgress.delete(tid);
+        } catch (e) {
+          briefPanel.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load quick brief</p>';
+          requestInProgress.delete(tid);
+        }
+      }
+
+      // Load Legal Test on demand
+      if (tid === 'test' && testPanel.innerHTML.includes('Loading')) {
+        try {
+          const test = await API.getLegalTest(caseData.id);
+          if (test.has_legal_test && test.steps) {
+            let html = `<div style="padding: 20px; max-width: 600px;">
+              <h3 style="color: var(--c-hi); margin-bottom: 20px; font-size: 16px;">${test.test_name || 'Multi-part Test'}</h3>
+              <div style="display: flex; flex-direction: column; gap: 16px;">`;
+            test.steps.forEach((step, idx) => {
+              html += `
+                <div style="border-left: 3px solid var(--accent); padding-left: 16px;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <span style="width: 24px; height: 24px; background: var(--accent); color: var(--c-inverse); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;">${step.step_number}</span>
+                    <span style="color: var(--c-hi); font-weight: 600;">${step.label}</span>
+                    ${step.para_reference ? `<span style="font-size: 11px; color: var(--c-sub); margin-left: auto;">${step.para_reference}</span>` : ''}
+                  </div>
+                  <p style="color: var(--c-mid); line-height: 1.5; margin: 0 0 8px 0;">${step.description}</p>
+                  ${step.how_applied ? `<p style="color: var(--c-sub); font-size: 13px; font-style: italic; margin: 0;">✓ ${step.how_applied}</p>` : ''}
+                </div>
+              `;
+            });
+            html += '</div></div>';
+            testPanel.innerHTML = html;
+            requestInProgress.delete(tid);
+          } else {
+            testPanel.innerHTML = '<div style="padding: 20px; color: var(--c-sub); text-align: center;">This case does not have an identified legal test.</div>';
+            requestInProgress.delete(tid);
+          }
+        } catch (e) {
+          testPanel.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load legal test</p>';
+          requestInProgress.delete(tid);
+        }
+      }
+
+      // Load Arguments on demand
+      if (tid === 'arguments' && argumentsPanel.innerHTML.includes('Loading')) {
+        try {
+          const result = await API.generateArguments(caseData.id, false);
+          const args = result.arguments;
+          if (args && args.petitioner_arguments) {
+            let html = `<div style="padding: 20px; max-width: 800px;">
+              <div style="margin-bottom: 24px;">
+                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                  <div style="flex: 1;">
+                    <h4 style="color: var(--c-hi); margin: 0 0 12px; font-size: 14px; font-weight: 600;">PETITIONER: ${args.petitioner_name || 'Petitioner'}</h4>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">`;
+            (args.petitioner_arguments || []).forEach(arg => {
+              html += `
+                <div style="background: var(--glass-xs); border-left: 3px solid #7eb3f5; padding: 12px; border-radius: 4px;">
+                  <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 6px; font-size: 13px;">${arg.point}</p>
+                  <p style="color: var(--c-mid); font-size: 12px; line-height: 1.5; margin: 0 0 6px;">${arg.detail}</p>
+                  <span style="display: inline-block; padding: 2px 8px; background: ${arg.strength === 'strong' ? '#34c97a' : arg.strength === 'moderate' ? '#e5963a' : '#999'}; color: white; border-radius: 3px; font-size: 10px; font-weight: 600;">STRENGTH: ${(arg.strength || 'moderate').toUpperCase()}</span>
+                </div>
+              `;
+            });
+            html += `</div></div>
+                  <div style="flex: 1;">
+                    <h4 style="color: var(--c-hi); margin: 0 0 12px; font-size: 14px; font-weight: 600;">RESPONDENT: ${args.respondent_name || 'Respondent'}</h4>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">`;
+            (args.respondent_arguments || []).forEach(arg => {
+              html += `
+                <div style="background: var(--glass-xs); border-left: 3px solid #ffa94d; padding: 12px; border-radius: 4px;">
+                  <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 6px; font-size: 13px;">${arg.point}</p>
+                  <p style="color: var(--c-mid); font-size: 12px; line-height: 1.5; margin: 0 0 6px;">${arg.detail}</p>
+                  <span style="display: inline-block; padding: 2px 8px; background: ${arg.strength === 'strong' ? '#34c97a' : arg.strength === 'moderate' ? '#e5963a' : '#999'}; color: white; border-radius: 3px; font-size: 10px; font-weight: 600;">STRENGTH: ${(arg.strength || 'moderate').toUpperCase()}</span>
+                </div>
+              `;
+            });
+            html += `</div></div></div>`;
+            if (args.court_finding) {
+              html += `
+                <div style="background: var(--accent-dim); border-left: 4px solid var(--accent); padding: 16px; border-radius: 4px;">
+                  <p style="color: var(--accent); font-weight: 600; margin: 0 0 8px; font-size: 13px;">COURT'S FINDING</p>
+                  <p style="color: var(--c-hi); line-height: 1.6; margin: 0;">${args.court_finding}</p>
+                </div>
+              `;
+            }
+            html += '</div>';
+            argumentsPanel.innerHTML = html;
+            requestInProgress.delete(tid);
+          } else {
+            argumentsPanel.innerHTML = '<p style="padding: 20px; color: var(--c-sub); text-align: center;">Arguments could not be extracted.</p>';
+            requestInProgress.delete(tid);
+          }
+        } catch (e) {
+          argumentsPanel.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load arguments</p>';
+          requestInProgress.delete(tid);
+        }
+      }
+
+      // Load Counter-Arguments on demand
+      if (tid === 'counter' && counterPanel.innerHTML.includes('Loading')) {
+        try {
+          const result = await API.counterArguments(caseData.id, false);
+          if (result.petitioner_weaknesses || result.respondent_weaknesses) {
+            let html = `<div style="padding: 20px; max-width: 900px;">
+              <h3 style="color: var(--c-hi); margin-bottom: 16px; font-size: 16px;">Weaknesses Analysis</h3>`;
+            if (result.petitioner_weaknesses && result.petitioner_weaknesses.length > 0) {
+              html += `<div style="margin-bottom: 24px;">
+                <h4 style="color: #7eb3f5; margin: 0 0 12px; font-size: 14px; font-weight: 600;">PETITIONER WEAKNESSES</h4>`;
+              result.petitioner_weaknesses.forEach(w => {
+                const sevColor = w.severity === 'fatal' ? '#ff6b6b' : w.severity === 'serious' ? '#e5963a' : '#999';
+                html += `
+                  <div style="background: var(--glass-xs); border-left: 3px solid #7eb3f5; padding: 12px; margin-bottom: 10px; border-radius: 4px;">
+                    <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 6px; font-size: 13px;">${w.argument}</p>
+                    <p style="color: var(--c-mid); font-size: 12px; margin: 0 0 6px; line-height: 1.5;"><strong>Weakness:</strong> ${w.weakness}</p>
+                    <span style="display: inline-block; padding: 3px 10px; background: ${sevColor}; color: white; border-radius: 3px; font-size: 10px; font-weight: 600;">SEVERITY: ${w.severity.toUpperCase()}</span>
+                  </div>
+                `;
+              });
+              html += `</div>`;
+            }
+            if (result.respondent_weaknesses && result.respondent_weaknesses.length > 0) {
+              html += `<div style="margin-bottom: 24px;">
+                <h4 style="color: #ffa94d; margin: 0 0 12px; font-size: 14px; font-weight: 600;">RESPONDENT WEAKNESSES</h4>`;
+              result.respondent_weaknesses.forEach(w => {
+                const sevColor = w.severity === 'fatal' ? '#ff6b6b' : w.severity === 'serious' ? '#e5963a' : '#999';
+                html += `
+                  <div style="background: var(--glass-xs); border-left: 3px solid #ffa94d; padding: 12px; margin-bottom: 10px; border-radius: 4px;">
+                    <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 6px; font-size: 13px;">${w.argument}</p>
+                    <p style="color: var(--c-mid); font-size: 12px; margin: 0 0 6px; line-height: 1.5;"><strong>Weakness:</strong> ${w.weakness}</p>
+                    <span style="display: inline-block; padding: 3px 10px; background: ${sevColor}; color: white; border-radius: 3px; font-size: 10px; font-weight: 600;">SEVERITY: ${w.severity.toUpperCase()}</span>
+                  </div>
+                `;
+              });
+              html += `</div>`;
+            }
+            if (result.overall_assessment) {
+              html += `
+                <div style="padding: 16px; background: var(--accent-dim); border-radius: 4px;">
+                  <p style="color: var(--accent); font-weight: 600; margin: 0 0 8px; font-size: 13px;">OVERALL ASSESSMENT</p>
+                  <p style="color: var(--c-hi); margin: 0 0 8px;"><strong>Stronger Side:</strong> ${result.overall_assessment.stronger_side?.toUpperCase() || 'N/A'}</p>
+                </div>
+              `;
+            }
+            html += `</div>`;
+            counterPanel.innerHTML = html;
+            requestInProgress.delete(tid);
+          } else {
+            counterPanel.innerHTML = '<p style="padding: 20px; color: var(--c-sub); text-align: center;">No weaknesses analysis available.</p>';
+            requestInProgress.delete(tid);
+          }
+        } catch (e) {
+          counterPanel.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load weaknesses analysis</p>';
+          requestInProgress.delete(tid);
+        }
+      }
+
+      // Load Strategy on demand
+      if (tid === 'strategy' && strategyPanel.innerHTML.includes('Loading')) {
+        try {
+          const result = await API.caseStrategy(caseData.id, 'petitioner', false);
+          if (result.side) {
+            let html = `<div style="padding: 20px; max-width: 900px;">
+              <h3 style="color: var(--c-hi); margin-bottom: 12px; font-size: 16px;">Litigation Strategy — ${result.side?.toUpperCase()}</h3>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; font-size: 12px;">
+                <div style="background: var(--glass-xs); padding: 10px; border-radius: 4px;">
+                  <span style="color: var(--c-sub);">Win Probability</span><br/>
+                  <span style="color: var(--c-hi); font-weight: 600; font-size: 14px;">${result.win_probability?.toUpperCase() || '—'}</span>
+                </div>
+              </div>`;
+            if (result.primary_strategy) {
+              html += `<div style="background: var(--accent-dim); border-left: 4px solid var(--accent); padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+                <p style="color: var(--accent); font-weight: 600; margin: 0 0 8px; font-size: 12px;">PRIMARY STRATEGY</p>
+                <p style="color: var(--c-mid); margin: 0; line-height: 1.5; font-size: 12px;">${result.primary_strategy}</p>
+              </div>`;
+            }
+            if (result.strongest_arguments && result.strongest_arguments.length > 0) {
+              html += `<div style="margin-bottom: 16px;">
+                <h4 style="color: #34c97a; margin: 0 0 8px; font-size: 12px; font-weight: 600;">STRONGEST ARGUMENTS</h4>`;
+              result.strongest_arguments.slice(0, 3).forEach(arg => {
+                html += `
+                  <div style="background: var(--glass-xs); border-left: 3px solid #34c97a; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 11px;">
+                    <p style="color: var(--c-hi); margin: 0 0 4px; font-weight: 600;">${arg.argument}</p>
+                  </div>
+                `;
+              });
+              html += `</div>`;
+            }
+            html += `</div>`;
+            strategyPanel.innerHTML = html;
+            requestInProgress.delete(tid);
+          } else {
+            strategyPanel.innerHTML = '<p style="padding: 20px; color: var(--c-sub); text-align: center;">Strategy not available.</p>';
+            requestInProgress.delete(tid);
+          }
+        } catch (e) {
+          strategyPanel.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load strategy</p>';
+          requestInProgress.delete(tid);
+        }
+      }
+
+      // Load Fact vs Law on demand
+      if (tid === 'factlaw' && factlawPanel.innerHTML.includes('Loading')) {
+        try {
+          const result = await API.factLawSeparation(caseData.id, false);
+          if (result.classifications && result.classifications.length > 0) {
+            let html = `<div style="padding: 20px; max-width: 900px;">
+              <h3 style="color: var(--c-hi); margin-bottom: 16px; font-size: 16px;">Fact vs Law Classification</h3>`;
+            if (result.fact_law_summary) {
+              html += `<div style="background: var(--glass-sm); border-radius: 4px; padding: 12px; margin-bottom: 16px;">
+                <p style="color: var(--c-hi); font-weight: 600; margin: 0 0 8px; font-size: 13px;">BURDEN OF PROOF</p>
+                <p style="color: var(--c-mid); font-size: 12px; line-height: 1.5; margin: 0;">${result.fact_law_summary.burden_summary || 'Burden distribution not determined'}</p>
+              </div>`;
+            }
+            html += `<div style="display: flex; flex-direction: column; gap: 10px;">`;
+            result.classifications.slice(0, 20).forEach(cls => {
+              const typeColor = cls.type === 'fact' ? '#7eb3f5' : cls.type === 'law' ? '#34c97a' : cls.type === 'ratio' ? '#e5963a' : '#999';
+              html += `
+                <div style="background: var(--glass-xs); border-left: 4px solid ${typeColor}; padding: 10px; border-radius: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
+                    <span style="color: var(--c-hi); font-weight: 600; font-size: 12px;">Para ${cls.para_number}</span>
+                    <span style="padding: 2px 8px; background: ${typeColor}22; color: ${typeColor}; border-radius: 3px; font-size: 10px; font-weight: 600;">${cls.type.toUpperCase()}</span>
+                  </div>
+                  <p style="color: var(--c-mid); font-size: 11px; margin: 0 0 6px; line-height: 1.4;">${cls.summary}</p>
+                </div>
+              `;
+            });
+            html += `</div></div>`;
+            factlawPanel.innerHTML = html;
+            requestInProgress.delete(tid);
+          } else {
+            factlawPanel.innerHTML = '<p style="padding: 20px; color: var(--c-sub); text-align: center;">Fact-law analysis not available.</p>';
+            requestInProgress.delete(tid);
+          }
+        } catch (e) {
+          factlawPanel.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load fact-law analysis</p>';
+          requestInProgress.delete(tid);
+        }
+      }
+
       if (tid === 'pdf') {
         console.log('[RCV] PDF tab clicked, opening PDF panel for case:', caseData.id);
         // FIX #10: Use openPDFPanel like Normal mode does, instead of inline rendering
@@ -1860,9 +2811,38 @@ function buildCaseResultsTable(cases, skipLabel = false) {
       // Precedent Status cell
       const statusCell = mk('td');
       statusCell.className = 'td-precedent-status';
-      const badge = mk('span', 'precedent-badge precedent-badge--loading');
-      badge.title = 'Checking precedent status...';
-      badge.textContent = '⏳ Loading...';
+      
+      // Get precedent status from case object
+      const precedentStatus = c.precedent_status || 'unknown';
+      const precedentStrength = c.precedent_strength || 0;
+      
+      let badgeIcon = '❓';
+      let badgeLabel = 'Unknown';
+      let badgeClass = 'precedent-badge--unknown';
+      
+      if (precedentStatus && precedentStatus !== 'unknown') {
+        if (['active_authority', 'cited', 'reliable'].includes(precedentStatus)) {
+          badgeIcon = '✅';
+          badgeLabel = precedentStatus.replace(/_/g, ' ');
+          badgeLabel = badgeLabel.charAt(0).toUpperCase() + badgeLabel.slice(1);
+          if (precedentStrength) badgeLabel += ` (${precedentStrength})`;
+          badgeClass = 'precedent-badge--good';
+        } else if (['limited', 'limited_precedent'].includes(precedentStatus)) {
+          badgeIcon = '⚠️';
+          badgeLabel = 'Limited';
+          if (precedentStrength) badgeLabel += ` (${precedentStrength})`;
+          badgeClass = 'precedent-badge--distinguished';
+        } else if (precedentStatus === 'dubious') {
+          badgeIcon = '⚠️';
+          badgeLabel = 'Dubious';
+          if (precedentStrength) badgeLabel += ` (${precedentStrength})`;
+          badgeClass = 'precedent-badge--overruled';
+        }
+      }
+      
+      const badge = mk('span', `precedent-badge ${badgeClass}`);
+      badge.title = `Precedent status: ${precedentStatus}`;
+      badge.textContent = `${badgeIcon} ${badgeLabel}`;
       statusCell.appendChild(badge);
       tr.appendChild(statusCell);
       
@@ -1883,57 +2863,6 @@ function buildCaseResultsTable(cases, skipLabel = false) {
       
       tbody.appendChild(tr);
     });
-    
-    // Fetch precedent status for all cases on this page (async, non-blocking)
-    if (caseIds.length > 0) {
-      API.getBulkPrecedentStatus(caseIds)
-        .then(data => {
-          if (data?.statuses) {
-            Object.entries(data.statuses).forEach(([caseId, status]) => {
-              const row = tbody.querySelector(`tr[data-case-id="${caseId}"]`);
-              if (!row) return;
-              
-              const statusCell = row.querySelector('.td-precedent-status');
-              const badge = statusCell?.querySelector('.precedent-badge');
-              if (!badge) return;
-              
-              let className = 'precedent-badge--unknown';
-              let icon = '❓';
-              let labelText = 'Unknown';
-              
-              if (status.status === 'good_law') {
-                className = 'precedent-badge--good';
-                icon = '✅';
-                labelText = `Good Law (${status.strength})`;
-              } else if (status.status === 'overruled') {
-                className = 'precedent-badge--overruled';
-                icon = '⚠️';
-                labelText = 'Overruled';
-              } else if (status.status === 'distinguished') {
-                className = 'precedent-badge--distinguished';
-                icon = '🔹';
-                labelText = 'Distinguished';
-              } else if (status.status === 'doubted') {
-                className = 'precedent-badge--doubted';
-                icon = '❔';
-                labelText = 'Doubted';
-              }
-              
-              badge.className = `precedent-badge ${className}`;
-              badge.textContent = `${icon} ${labelText}`;
-              badge.title = status.label || 'Precedent status';
-            });
-          }
-        })
-        .catch(err => {
-          console.warn('[API] Could not fetch precedent statuses:', err);
-          tbody.querySelectorAll('.precedent-badge--loading').forEach(b => {
-            b.className = 'precedent-badge precedent-badge--unknown';
-            b.textContent = '❓ Unknown';
-            b.title = 'Precedent status service unavailable';
-          });
-        });
-    }
   }
 
   // ===== FUNCTION: Render pagination controls for this bubble =====
@@ -2224,10 +3153,29 @@ function buildJudgmentParagraphsReader(paragraphs, caseMetadata = {}) {
 }
 
 function buildStudyOutput(sections) {
+  console.log('[BUILD-STUDY] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('[BUILD-STUDY] 🎓 BUILD STUDY OUTPUT');
+  console.log('[BUILD-STUDY] Input sections:', {
+    count: sections?.length,
+    isArray: Array.isArray(sections),
+    types: sections?.map(s => s.output_type).join(', '),
+  });
+  
   const wrap = mk('div', 'study-output');
   wrap.style.cssText = 'margin-top:14px;padding:12px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;';
   
-  sections.forEach(s => {
+  console.log('[BUILD-STUDY] Creating wrapper container');
+  
+  sections.forEach((s, idx) => {
+    console.log(`[BUILD-STUDY] Processing section[${idx}]:`, {
+      output_type: s.output_type,
+      title: s.title,
+      hasContent: !!s.content,
+      contentLength: s.content?.length || 0,
+      hasBody: !!s.body,
+      hasText: !!s.text,
+    });
+    
     const type = s.output_type || 'unknown';
     const block = mk('div', 'study-block');
     block.style.cssText = 'margin-bottom:16px;padding:12px;background:#fff;border-radius:8px;border-left:3px solid #3b82f6;';
@@ -2240,28 +3188,40 @@ function buildStudyOutput(sections) {
       case 'case_explanation':
       case 'bare_act_simplified':
       case 'deep_dive':
-        lbl.textContent = `📚 ${type.replace(/_/g, ' ').toUpperCase()}`;
+        lbl.textContent = `📚 ${s.title || type.replace(/_/g, ' ').toUpperCase()}`;
+        console.log(`[BUILD-STUDY]   ✅ Type:`, type, '→ Rendering text content');
         const textBody = mk('div', 'study-block__body');
         textBody.style.cssText = 'font-size:14px;line-height:1.7;color:#374151;';
-        textBody.innerHTML = s.body || (s.text || 'Loading...');
+        textBody.innerHTML = s.content || s.body || (s.text || 'Loading...');
         block.appendChild(lbl);
         block.appendChild(textBody);
         break;
         
       case 'case_brief':
       case 'notes':
-        lbl.textContent = `📝 ${type === 'case_brief' ? 'CASE BRIEF (FIHR)' : 'STUDY NOTES'}`;
+        lbl.textContent = `📝 ${s.title || (type === 'case_brief' ? 'CASE BRIEF (FIHR)' : 'STUDY NOTES')}`;
+        console.log(`[BUILD-STUDY]   ✅ Type:`, type, '→ Rendering brief/notes');
         const briefBody = mk('div', 'study-block__body');
         briefBody.style.cssText = 'font-size:13px;line-height:1.6;color:#374151;';
-        briefBody.innerHTML = s.body || s.text || 'No content';
+        briefBody.innerHTML = s.content || s.body || s.text || 'No content';
         block.appendChild(lbl);
         block.appendChild(briefBody);
         break;
         
       case 'flashcards':
         lbl.textContent = '🃏 FLASHCARDS';
+        console.log(`[BUILD-STUDY]   ✅ Type: flashcards`, {
+          hasCards: !!s.cards,
+          cardsArray: Array.isArray(s.cards),
+          cardsCount: Array.isArray(s.cards) ? s.cards.length : 0,
+          hasContent: !!s.content,
+          contentType: typeof s.content,
+        });
         block.appendChild(lbl);
-        if (s.cards && Array.isArray(s.cards)) {
+        
+        // Try to render as flashcard array first
+        if (s.cards && Array.isArray(s.cards) && s.cards.length > 0) {
+          console.log(`[BUILD-STUDY]     Type: card array - rendering ${s.cards.length} cards`);
           const deckWrap = mk('div');
           deckWrap.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;';
           s.cards.forEach((card, i) => {
@@ -2282,16 +3242,28 @@ function buildStudyOutput(sections) {
             deckWrap.appendChild(cardEl);
           });
           block.appendChild(deckWrap);
-        } else {
+        } 
+        // Fallback: render as HTML content if it's a string
+        else if (typeof s.content === 'string' && s.content.length > 0) {
+          console.log(`[BUILD-STUDY]     Type: HTML string - rendering content`);
+          const contentDiv = mk('div');
+          contentDiv.innerHTML = s.content;
+          block.appendChild(contentDiv);
+        }
+        // Last resort: show message
+        else {
+          console.log(`[BUILD-STUDY]     Type: empty - no data`);
           const empty = mk('p');
-          empty.textContent = 'No flashcards generated';
+          empty.textContent = 'No flashcards available for this case';
           empty.style.color = '#9ca3af';
+          empty.style.fontSize = '13px';
           block.appendChild(empty);
         }
         break;
         
       case 'arguments':
         lbl.textContent = '⚔️ ARGUMENTS';
+        console.log(`[BUILD-STUDY]   ✅ Type: arguments`);
         block.appendChild(lbl);
         const argBody = mk('div');
         argBody.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
@@ -2415,7 +3387,7 @@ function buildStudyOutput(sections) {
 
 
 // ─────────────────────────────────────────────────────────────
-// 10. PDF SIDE PANEL
+// 11. PDF SIDE PANEL
 // ─────────────────────────────────────────────────────────────
 function initPDFSidePanel() {
   $('psp-close').addEventListener('click',     closePDFPanel);
@@ -2509,7 +3481,7 @@ function movePDFMatch(dir) {
 
 
 // ─────────────────────────────────────────────────────────────
-// 11. UTILITIES
+// 12. UTILITIES
 // ─────────────────────────────────────────────────────────────
 function initTextareaResize() {
   $('chat-input').addEventListener('input', function () {

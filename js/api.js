@@ -93,6 +93,9 @@ const API = {
       search_mode: r.search_mode,
       paraType: r.para_type,
       pdfLink:  r.pdf_link || `/case/${r.case_id}`,
+      authority_score: r.authority_score || 50,
+      precedent_status: r.precedent_status || 'unknown',
+      precedent_strength: r.precedent_strength || 0,
     }));
     
     // Build tabular results with enhanced information
@@ -536,7 +539,969 @@ const API = {
     }
   },
 
+  /**
+   * DAY 3 — ISSUE SPOTTER
+   * Analyzes client facts and identifies legal issues
+   *
+   * POST /api/study/issue-spot
+   * Body: { facts: string, context?: string }
+   *
+   * Response:
+   * {
+   *   issues: [
+   *     {
+   *       title: string,
+   *       priority: "high" | "medium" | "low",
+   *       applicable_acts: [string, ...],
+   *       explanation: string,
+   *       suggested_search: [string, ...]
+   *     }
+   *   ]
+   * }
+   */
+  async spotIssues(facts, context = '') {
+    if (USE_MOCK) {
+      await _delay(800);
+      return {
+        issues: [
+          {
+            title: 'Wrongful termination',
+            priority: 'high',
+            applicable_acts: ['Industrial Disputes Act, 1947', 'Contract Act, 1872'],
+            explanation: 'Termination without notice may constitute wrongful termination if the employment contract or statute requires notice period.',
+            suggested_search: ['wrongful termination notice period', 'wrongful discharge India', 'termination without cause']
+          },
+          {
+            title: 'Entitlement to severance',
+            priority: 'high',
+            applicable_acts: ['Payment of Gratuity Act, 1972', 'Industrial Disputes Act, 1947'],
+            explanation: 'After 5 years of service, the employee may be entitled to gratuity and severance based on statutory provisions.',
+            suggested_search: ['gratuity calculation 5 years', 'severance entitlement India']
+          },
+          {
+            title: 'Unfair labor practice',
+            priority: 'medium',
+            applicable_acts: ['Industrial Disputes Act, 1947'],
+            explanation: 'Termination without proper notice or opportunity to explain may constitute an unfair labor practice.',
+            suggested_search: ['unfair labor practices employer', 'industrial dispute termination']
+          }
+        ]
+      };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/study/issue-spot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facts, context }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Issue spotting failed');
+      }
+      return await res.json();
+    } catch (err) {
+      console.error(`[API] Issue spotting error: ${err.message}`);
+      return { issues: [] };
+    }
+  },
+
+  /**
+   * DAY 3 — QUICK BRIEF
+   * Fast summary of a case (DB only or with LLM enhancement)
+   *
+   * POST /api/study/quick-brief
+   * Body: { case_id: string, use_llm?: boolean }
+   *
+   * Response:
+   * {
+   *   one_liner: string,
+   *   summary_30s: string,
+   *   source: "database" | "llm"
+   * }
+   */
+  async getQuickBrief(caseId, useLLM = false) {
+    if (USE_MOCK) {
+      await _delay(useLLM ? 300 : 50);
+      return {
+        one_liner:   'Right to health extends to emergency medical care; State cannot shirk obligation citing lack of resources.',
+        summary_30s: 'SC held that Article 21 includes right to emergency medical care. State must provide treatment regardless of resource constraints. Petitioner was denied care at govt hospitals and got treated privately; Court ordered compensation.',
+        source:      useLLM ? 'llm' : 'database'
+      };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/study/quick-brief`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ case_id: caseId, use_llm: useLLM }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Quick brief failed');
+      }
+      return await res.json();
+    } catch (err) {
+      console.error(`[API] Quick brief error: ${err.message}`);
+      return { one_liner: '', summary_30s: '', source: 'error' };
+    }
+  },
+
+  /**
+   * DAY 3 — LEGAL TEST EXTRACTOR
+   * Extracts multi-part legal tests from case (e.g., proportionality test, Lemon test)
+   *
+   * POST /api/study/legal-test
+   * Body: { case_id: string }
+   *
+   * Response:
+   * {
+   *   has_legal_test: boolean,
+   *   test_name?: string,
+   *   steps?: [
+   *     {
+   *       step_number: number,
+   *       label: string,
+   *       description: string,
+   *       para_reference?: string,
+   *       how_applied?: string
+   *     }
+   *   ]
+   * }
+   */
+  async getLegalTest(caseId) {
+    if (USE_MOCK) {
+      await _delay(200);
+      return {
+        has_legal_test: true,
+        test_name: 'Proportionality Test',
+        steps: [
+          {
+            step_number: 1,
+            label: 'Legitimate Aim',
+            description: 'Is there a legitimate aim served by the measure?',
+            para_reference: 'Para 45-48',
+            how_applied: 'The penalty served disciplinary and deterrent purposes — a legitimate aim.'
+          },
+          {
+            step_number: 2,
+            label: 'Rational Connection',
+            description: 'Is there rational connection between means and aim?',
+            para_reference: 'Para 52-55',
+            how_applied: 'The penalty was rationally connected to the misconduct — employee knew consequences.'
+          },
+          {
+            step_number: 3,
+            label: 'Necessity',
+            description: 'Is the measure necessary (no less restrictive alternative)?',
+            para_reference: 'Para 59-62',
+            how_applied: 'Given severity of misconduct, a lighter measure would not have achieved deterrence.'
+          }
+        ]
+      };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/study/legal-test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ case_id: caseId }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Legal test extraction failed');
+      }
+      return await res.json();
+    } catch (err) {
+      console.error(`[API] Legal test error: ${err.message}`);
+      return { has_legal_test: false };
+    }
+  },
+
+  /**
+   * DAYS 4-6 — LEGAL REASONING ENGINE
+   * Get cached arguments (instant lookup)
+   *
+   * GET /api/cases/{case_id}/arguments
+   *
+   * Returns 404 if arguments not yet generated.
+   * Frontend should try this first before calling generateArguments.
+   *
+   * Response (if cached):
+   * {
+   *   case_id: string,
+   *   arguments: {
+   *     petitioner_name: string,
+   *     respondent_name: string,
+   *     petitioner_arguments: [{point, detail, para_ref, strength}],
+   *     respondent_arguments: [...],
+   *     court_finding: string,
+   *     winning_side: "petitioner|respondent|partial",
+   *     key_legal_test: string,
+   *     test_parts: [string]
+   *   },
+   *   generated_at: ISO timestamp,
+   *   cached: true
+   * }
+   */
+  async getArgumentsCached(caseId) {
+    if (USE_MOCK) {
+      await _delay(50);
+      throw new Error('404: Arguments not yet generated');
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/cases/${caseId}/arguments`);
+      if (!res.ok) {
+        throw new Error('Arguments not cached');
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn(`[API] Arguments not cached: ${err.message}`);
+      return null;
+    }
+  },
+
+  /**
+   * DAYS 4-6 — LEGAL REASONING ENGINE
+   * Generate arguments for a case (with caching)
+   *
+   * POST /api/cases/{case_id}/arguments?force_regenerate=false
+   *
+   * First call: ~60-90s (Ollama generates, then caches)
+   * Subsequent calls: instant (served from cache)
+   *
+   * Optional query param: force_regenerate=true to refresh cache
+   *
+   * Response:
+   * {
+   *   arguments: {...same as getArgumentsCached...},
+   *   cached: false,
+   *   done: true
+   * }
+   */
+  async generateArguments(caseId, forceRegenerate = false) {
+    if (USE_MOCK) {
+      await _delay(1500);
+      return {
+        arguments: {
+          petitioner_name: 'Petitioner Name',
+          respondent_name: 'Respondent Name',
+          petitioner_arguments: [
+            {
+              point: 'Violation of fundamental rights',
+              detail: 'The action violated Article 21 by denying due process...',
+              para_ref: 12,
+              strength: 'strong'
+            }
+          ],
+          respondent_arguments: [
+            {
+              point: 'State necessity and emergency',
+              detail: 'The circumstances warranted immediate action...',
+              para_ref: 18,
+              strength: 'moderate'
+            }
+          ],
+          court_finding: 'The court held that the petitioner\'s right was violated...',
+          winning_side: 'petitioner',
+          key_legal_test: 'Proportionality test',
+          test_parts: ['Legality', 'Necessity', 'Proportionality']
+        },
+        cached: false,
+        done: true
+      };
+    }
+
+    try {
+      const url = `${BASE_URL}/api/cases/${caseId}/arguments${forceRegenerate ? '?force_regenerate=true' : ''}`;
+      console.log('[API] Arguments: Fetching from', url);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!res.ok) {
+        throw new Error(`Argument generation failed: ${res.status}`);
+      }
+
+      // Parse plain JSON response
+      const data = await res.json();
+      console.log('[API] Arguments: Response received', { hasArguments: !!data.arguments, cached: data.cached });
+
+      return data || { arguments: {}, cached: false, done: true };
+    } catch (err) {
+      console.error(`[API] Argument generation error: ${err.message}`);
+      return { arguments: {}, cached: false, done: false };
+    }
+  },
+
+  /**
+   * DAYS 4-6 — LEGAL REASONING ENGINE
+   * Generate quick summary (one-liner + 30-second summary)
+   *
+   * POST /api/cases/{case_id}/quick-summary
+   *
+   * Smart fallback: Uses DB ratio/headnotes if available, LLM enhances async.
+   *
+   * Response:
+   * {
+   *   one_liner: "Held: [core holding in max 18 words]",
+   *   summary_30s: "3 sentences: dispute, holding, principle",
+   *   cached: false,
+   *   done: true
+   * }
+   */
+  async generateQuickSummary(caseId) {
+    if (USE_MOCK) {
+      await _delay(300);
+      return {
+        one_liner: 'Held: Right to privacy is a fundamental right under Article 21.',
+        summary_30s: 'The petitioner challenged restrictions on privacy in personal affairs. The SC held that privacy is intrinsic to personal liberty under Article 21. This established privacy as a fundamental constitutional right.',
+        cached: false,
+        done: true
+      };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/cases/${caseId}/quick-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!res.ok) {
+        throw new Error('Quick summary generation failed');
+      }
+
+      // Stream response
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let data = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const json = JSON.parse(line.replace('data: ', ''));
+            data = json;
+          }
+        }
+      }
+
+      return data || { one_liner: '', summary_30s: '', cached: false, done: true };
+    } catch (err) {
+      console.error(`[API] Quick summary error: ${err.message}`);
+      return { one_liner: '', summary_30s: '', cached: false, done: false };
+    }
+  },
+
+  /**
+   * DAYS 4-6 — LEGAL REASONING ENGINE
+   * Issue spotter with DB-backed case search (upgraded from study version)
+   *
+   * POST /api/legal/issue-spot
+   *
+   * Input:
+   * {
+   *   facts: "Client facts...",
+   *   context: "Optional context",
+   *   max_issues: 5
+   * }
+   *
+   * Output: Returns REAL case_ids from your DB (not LLM-invented names)
+   *
+   * Response:
+   * {
+   *   issues: {
+   *     issues: [{
+   *       issue: string,
+   *       explanation: string,
+   *       applicable_acts: [string],
+   *       priority: "high|medium|low",
+   *       relief_available: string,
+   *       relevant_cases: [{case_id, case_name, citation, court, year, outcome}]
+   *     }],
+   *     immediate_reliefs: [string],
+   *     limitation_concern: string|null,
+   *     matter_type: "criminal|civil|..."
+   *   },
+   *   done: true
+   * }
+   */
+  async spotIssuesDB(facts, context = '', maxIssues = 5) {
+    if (USE_MOCK) {
+      await _delay(1000);
+      return {
+        issues: {
+          issues: [
+            {
+              issue: 'Wrongful termination without notice',
+              explanation: 'Termination without proper notice may be unlawful.',
+              applicable_acts: ['Industrial Disputes Act, 1947', 'Contract Act, 1872'],
+              priority: 'high',
+              relief_available: 'Restoration to service + back wages',
+              relevant_cases: [
+                {
+                  case_id: 'case-uuid-1',
+                  case_name: 'D.K. Basu v. State of West Bengal',
+                  citation: 'AIR 1997 SC 610',
+                  court: 'Supreme Court',
+                  year: 1997,
+                  outcome: 'Allowed'
+                }
+              ]
+            }
+          ],
+          immediate_reliefs: ['File writ of mandamus', 'Apply for interim relief'],
+          limitation_concern: null,
+          matter_type: 'service'
+        },
+        done: true
+      };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/legal/issue-spot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          facts,
+          context,
+          max_issues: maxIssues
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Issue spotting failed');
+      }
+
+      // Stream response
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let data = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const json = JSON.parse(line.replace('data: ', ''));
+            data = json;
+          }
+        }
+      }
+
+      return data || { issues: {}, done: true };
+    } catch (err) {
+      console.error(`[API] Issue spotting error: ${err.message}`);
+      return { issues: {}, done: false };
+    }
+  },
+
+  /**
+   * DAYS 4-6 — LEGAL REASONING ENGINE
+   * Multi-case structured brief
+   *
+   * POST /api/brief/multi
+   *
+   * Input:
+   * {
+   *   case_ids: ["id1", "id2", "id3"],
+   *   topic: "Article 21 — right to privacy",
+   *   mode: "brief|evolution|conflict"
+   * }
+   *
+   * Modes:
+   * - brief: Side-by-side structured comparison
+   * - evolution: How the law changed chronologically
+   * - conflict: Where cases agree and disagree
+   *
+   * Response varies by mode (brief/evolution/conflict structure)
+   */
+  async getMultiBrief(caseIds, topic, mode = 'brief') {
+    if (USE_MOCK) {
+      await _delay(1500);
+      return {
+        topic,
+        mode,
+        cases: [
+          {
+            case_name: 'Case 1',
+            citation: 'AIR 2017 SC 123',
+            year: 2017,
+            court: 'Supreme Court',
+            key_facts: 'Facts relevant to the topic.',
+            holding_on_topic: 'The court held that...',
+            ratio: 'Binding principle...',
+            precedent_value: 'high'
+          }
+        ],
+        synthesis: 'These cases together establish...',
+        key_principle: 'Core principle extracted.',
+        conflicts: null,
+        cached: false,
+        done: true
+      };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/brief/multi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          case_ids: caseIds,
+          topic,
+          mode
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Multi-brief generation failed');
+      }
+
+      // Stream response
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let data = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const json = JSON.parse(line.replace('data: ', ''));
+            data = json;
+          }
+        }
+      }
+
+      return data || { cases: [], synthesis: '', cached: false, done: true };
+    } catch (err) {
+      console.error(`[API] Multi-brief error: ${err.message}`);
+      return { cases: [], synthesis: '', cached: false, done: false };
+    }
+  },
+
+  /**
+   * Get Reasoning Bundle (Days 1, 2, 4)
+   * Call this on case page load to see what's cached.
+   *
+   * GET /api/cases/{case_id}/reasoning-full
+   *
+   * Response:
+   *   {
+   *     arguments: {...} | null,
+   *     counter_arguments: {...} | null,
+   *     strategy_pet: {...} | null,
+   *     strategy_res: {...} | null,
+   *     fact_law: {...} | null,
+   *     quick_summary: {...} | null,
+   *     pending: ["counter_arguments", "strategy_pet"],
+   *     all_cached: boolean
+   *   }
+   */
+  async reasoningFull(caseId) {
+    if (USE_MOCK) {
+      await _delay(300);
+      return {
+        arguments: null,
+        counter_arguments: null,
+        strategy_pet: null,
+        strategy_res: null,
+        fact_law: null,
+        quick_summary: null,
+        pending: ['counter_arguments', 'strategy_pet', 'fact_law'],
+        all_cached: false
+      };
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/cases/${caseId}/reasoning-full`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!res.ok) throw new Error('Failed to fetch reasoning bundle');
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.error(`[API] Reasoning bundle error: ${err.message}`);
+      return { pending: [], all_cached: false };
+    }
+  },
+
+  /**
+   * Counter-Arguments Analysis (Days 1, 2, 4)
+   * Identify weaknesses in each side's arguments.
+   *
+   * POST /api/cases/{case_id}/counter-arguments
+   * Query: ?force_regenerate=true (optional)
+   *
+   * Response (streaming):
+   *   {
+   *     petitioner_weaknesses: [
+   *       { argument, weakness, counter, severity: "fatal|serious|minor" }
+   *     ],
+   *     respondent_weaknesses: [...],
+   *     overall_assessment: {
+   *       stronger_side: "petitioner|respondent|balanced",
+   *       decisive_issue: string,
+   *       swing_factor: string
+   *     },
+   *     cached: boolean,
+   *     done: boolean
+   *   }
+   */
+  async counterArguments(caseId, forceRegenerate = false) {
+    if (USE_MOCK) {
+      await _delay(2000);
+      return {
+        petitioner_weaknesses: [
+          {
+            argument: 'Arrest was without valid warrant',
+            weakness: 'DK Basu guidelines allow arrest without warrant for cognisable offences',
+            counter: 'Respondent should cite Section 41(1)(ba) CrPC',
+            severity: 'serious'
+          }
+        ],
+        respondent_weaknesses: [
+          {
+            argument: 'Detention was within permissible limit',
+            weakness: 'Detention exceeded 24 hours without magistrate production',
+            counter: 'Article 22(2) is absolute — the constitutional mandate applies',
+            severity: 'fatal'
+          }
+        ],
+        overall_assessment: {
+          stronger_side: 'petitioner',
+          decisive_issue: 'Whether the 24-hour rule under Article 22(2) was breached',
+          swing_factor: 'If the FIR shows a cognisable offence, respondent position strengthens'
+        },
+        cached: false,
+        done: true
+      };
+    }
+
+    try {
+      const url = `${BASE_URL}/api/cases/${caseId}/counter-arguments${forceRegenerate ? '?force_regenerate=true' : ''}`;
+      console.log('[API] Counter-arguments: Fetching from', url);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+
+      if (!res.ok) throw new Error(`Counter-arguments generation failed: ${res.status}`);
+
+      // Parse plain JSON response
+      const data = await res.json();
+      console.log('[API] Counter-arguments: Response received', { hasWeaknesses: !!(data.petitioner_weaknesses || data.respondent_weaknesses), cached: data.cached });
+
+      return data || { petitioner_weaknesses: [], respondent_weaknesses: [], cached: false, done: true };
+    } catch (err) {
+      console.error(`[API] Counter-arguments error: ${err.message}`);
+      return { petitioner_weaknesses: [], respondent_weaknesses: [], cached: false, done: false };
+    }
+  },
+
+  /**
+   * Litigation Strategy (Days 1, 2, 4)
+   * Generate strategy for petitioner or respondent.
+   *
+   * POST /api/cases/{case_id}/strategy
+   * Body: { side: "petitioner" | "respondent" }
+   * Query: ?force_regenerate=true (optional)
+   *
+   * Response (streaming):
+   *   {
+   *     side: "petitioner" | "respondent",
+   *     win_probability: "high|medium|low",
+   *     win_probability_reason: string,
+   *     primary_strategy: string,
+   *     strongest_arguments: [{ argument, why_strong, how_to_present, supporting_law }],
+   *     arguments_to_avoid: [{ argument, reason }],
+   *     how_to_counter_opposition: [{ their_point, your_response }],
+   *     evidence_to_establish: [string],
+   *     reliefs_to_claim: [string],
+   *     risk_factors: [{ risk, mitigation }],
+   *     alternative_routes: [string],
+   *     cached: boolean,
+   *     done: boolean
+   *   }
+   */
+  async caseStrategy(caseId, side = 'petitioner', forceRegenerate = false) {
+    if (USE_MOCK) {
+      await _delay(2000);
+      return {
+        side,
+        win_probability: 'medium',
+        win_probability_reason: 'Strong constitutional violation but procedural gaps may hurt',
+        primary_strategy: 'Lead with Article 22(2) violation. Frame as non-derogable fundamental right.',
+        strongest_arguments: [
+          {
+            argument: 'Article 22(2) violation — absolute right, no derogation',
+            why_strong: 'Court in DK Basu held this is non-negotiable',
+            how_to_present: 'Open with constitutional text, then cite DK Basu para 34',
+            supporting_law: 'Article 22(2) Constitution + DK Basu v. State of WB (1997)'
+          }
+        ],
+        arguments_to_avoid: [
+          { argument: 'Malicious prosecution claim', reason: 'No evidence — weakens credibility' }
+        ],
+        how_to_counter_opposition: [
+          {
+            their_point: 'Arrest was for cognisable offence under Section 41 CrPC',
+            your_response: 'Section 41 permits arrest but does not suspend Article 22(2)'
+          }
+        ],
+        evidence_to_establish: ['Timestamp of arrest from FIR', 'Timestamp of magistrate production'],
+        reliefs_to_claim: ['Declaration of constitutional violation', 'Compensation under Nilabati Behera'],
+        risk_factors: [
+          {
+            risk: 'Court may treat as infructuous if petitioner already released',
+            mitigation: 'Press for compensation remedy — mootness does not extinguish tort claim'
+          }
+        ],
+        alternative_routes: [
+          'If habeas corpus fails — file Section 482 CrPC application',
+          'File complaint before NHRC under Protection of Human Rights Act'
+        ],
+        cached: false,
+        done: true
+      };
+    }
+
+    try {
+      const url = `${BASE_URL}/api/cases/${caseId}/strategy${forceRegenerate ? '?force_regenerate=true' : ''}`;
+      console.log('[API] Strategy: Fetching from', url);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ side }),
+      });
+
+      if (!res.ok) throw new Error(`Strategy generation failed: ${res.status}`);
+
+      // Parse plain JSON response
+      const data = await res.json();
+      console.log('[API] Strategy: Response received', { side: data.side, cached: data.cached });
+
+      return data || { side, win_probability: 'medium', cached: false, done: true };
+    } catch (err) {
+      console.error(`[API] Strategy error: ${err.message}`);
+      return { side, win_probability: 'medium', cached: false, done: false };
+    }
+  },
+
+  /**
+   * Fact vs Law Separation (Days 1, 2, 4)
+   * Tag each paragraph as fact, law, mixed, ratio, procedural, or order.
+   *
+   * POST /api/cases/{case_id}/fact-law-separation
+   * Query: ?force_regenerate=true (optional)
+   *
+   * Response (streaming):
+   *   {
+   *     classifications: [
+   *       {
+   *         para_number: 1,
+   *         type: "fact|law|mixed|procedural|ratio|order",
+   *         sub_type: "finding_of_fact|question_of_law|ratio_decidendi|...",
+   *         summary: string,
+   *         burden_of_proof: { present: bool, party: string, on_issue: string }
+   *       }
+   *     ],
+   *     fact_law_summary: {
+   *       key_facts_established: [string],
+   *       key_legal_questions: [string],
+   *       burden_summary: string,
+   *       contested_facts: [string]
+   *     },
+   *     cached: boolean,
+   *     done: boolean
+   *   }
+   */
+  async factLawSeparation(caseId, forceRegenerate = false) {
+    if (USE_MOCK) {
+      await _delay(2000);
+      return {
+        classifications: [
+          {
+            para_number: 3,
+            type: 'fact',
+            sub_type: 'finding_of_fact',
+            summary: 'Petitioner arrested on 14 March without warrant',
+            burden_of_proof: { present: false, party: null, on_issue: null }
+          },
+          {
+            para_number: 12,
+            type: 'law',
+            sub_type: 'question_of_law',
+            summary: 'Whether Article 22(2) admits any exception',
+            burden_of_proof: {
+              present: true,
+              party: 'respondent',
+              on_issue: 'Respondent must justify deviation from 24-hour rule'
+            }
+          }
+        ],
+        fact_law_summary: {
+          key_facts_established: [
+            'Arrest on 14 March without warrant — Para 3',
+            'Detention for 38 hours without magistrate production — Para 7'
+          ],
+          key_legal_questions: [
+            'Whether Article 22(2) admits exception for cognisable offences — Para 12'
+          ],
+          burden_summary: 'Respondent bears burden to justify detention',
+          contested_facts: ['Whether the FIR was registered before or after arrest']
+        },
+        cached: false,
+        done: true
+      };
+    }
+
+    try {
+      const url = `${BASE_URL}/api/cases/${caseId}/fact-law-separation${forceRegenerate ? '?force_regenerate=true' : ''}`;
+      console.log('[API] Fact-law: Fetching from', url);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+
+      if (!res.ok) throw new Error(`Fact-law separation failed: ${res.status}`);
+
+      // Parse plain JSON response
+      const data = await res.json();
+      console.log('[API] Fact-law: Response received', { classifications: data.classifications?.length || 0, cached: data.cached });
+
+      return data || { classifications: [], fact_law_summary: {}, cached: false, done: true };
+    } catch (err) {
+      console.error(`[API] Fact-law separation error: ${err.message}`);
+      return { classifications: [], fact_law_summary: {}, cached: false, done: false };
+    }
+  },
+
 };
+
+
+/**
+ * STUDY MODE — SMART SEARCH
+ * Natural language query → Multi-tab study output
+ *
+ * POST /api/study/search
+ * Body: { query: string, case_context?: string }
+ *
+ * Response:
+ *   {
+ *     query: string,
+ *     category: string,
+ *     study_output_type: string,
+ *     available_tabs: string[],
+ *     tab_order: string[],
+ *     outputs: { [tab: string]: object },
+ *     case_id?: string,
+ *     case_name?: string
+ *   }
+ */
+async function studySearch(query, caseContext = null) {
+  if (USE_MOCK) {
+    console.log('[API-STUDY] 🔄 Using MOCK data (USE_MOCK=true)');
+    await _delay(1000);
+    const mockData = {
+      query: query,
+      category: '1.1_case_simple',
+      study_output_type: 'case_explanation',
+      available_tabs: ['case_explanation', 'case_brief', 'arguments', 'flashcards', 'ratio_obiter'],
+      tab_order: ['case_explanation', 'case_brief', 'arguments', 'flashcards', 'ratio_obiter'],
+      outputs: {
+        case_explanation: {
+          case_name: 'Sample Case',
+          facts: 'Sample facts about the case...',
+          issues: 'The main legal issue...',
+          judgment: 'The court\'s decision...',
+          significance: 'This case is important because...'
+        },
+        case_brief: {
+          case_name: 'Sample Case',
+          citation: 'Sample Citation',
+          facts: 'Sample facts...',
+          held: 'The court held...',
+          ratio: 'The binding principle...'
+        }
+      },
+      case_id: 'SC_2022_xxxxx',
+      case_name: 'Sample Case'
+    };
+    console.log('[API-STUDY] Returning MOCK response:', mockData);
+    return mockData;
+  }
+
+  try {
+    const url = `${BASE_URL}/api/study/search`;
+    console.log('[API-STUDY] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[API-STUDY] 🔍 STUDY SEARCH REQUEST');
+    console.log('[API-STUDY] URL:', url);
+    console.log('[API-STUDY] Query:', query);
+    console.log('[API-STUDY] Case Context:', caseContext || 'NONE');
+    console.log('[API-STUDY] Sending fetch...');
+    
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, case_context: caseContext }),
+    });
+
+    console.log('[API-STUDY] Response status:', res.status, res.statusText);
+    
+    if (!res.ok) {
+      console.error('[API-STUDY] ❌ HTTP Error:', res.status, res.statusText);
+      throw new Error(`Study search failed: ${res.status}`);
+    }
+
+    const data = await res.json();
+    
+    console.log('[API-STUDY] ✅ Response JSON received:', {
+      hasData: !!data,
+      query: data?.query,
+      category: data?.category,
+      study_output_type: data?.study_output_type, 
+      available_tabs: data?.available_tabs,
+      tab_order: data?.tab_order,
+      outputs_keys: data?.outputs ? Object.keys(data.outputs) : [],
+      case_id: data?.case_id,
+      case_name: data?.case_name,
+    });
+    
+    // Detailed tab info
+    if (data?.available_tabs && Array.isArray(data.available_tabs)) {
+      console.log('[API-STUDY] Tabs found:', data.available_tabs.length);
+      data.available_tabs.forEach((tab, idx) => {
+        const content = data.outputs?.[tab];
+        console.log(`[API-STUDY]   Tab[${idx}]: "${tab}"`, {
+          hasOutput: !!content,
+          outputType: typeof content,
+          outputLength: content?.length || 0,
+        });
+      });
+    }
+
+    console.log('[API-STUDY] Returning data object');
+    return data;
+  } catch (err) {
+    console.error(`[API-STUDY] ❌ STUDY SEARCH ERROR:`, err.message);
+    console.error('[API-STUDY] Stack:', err.stack);
+    return {
+      query: query,
+      available_tabs: [],
+      outputs: {},
+      error: err.message
+    };
+  }
+}
+
+// Add to API object
+API.studySearch = studySearch;
 
 
 // ============================================================
