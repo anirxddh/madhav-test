@@ -1608,16 +1608,26 @@ function buildCaseViewer(c) {
       // Load Legal Test on demand
       if (tgt === 'test' && tp.innerHTML.includes('Loading')) {
         try {
+          console.log(`[APP-LEGAL-TEST] 🔍 Loading legal test for case: ${c.id}`);
           const test = await API.getLegalTest(c.id);
-          if (test.has_legal_test && test.steps) {
+          
+          console.log(`[APP-LEGAL-TEST] 📊 Received test data:`, test);
+          console.log(`[APP-LEGAL-TEST]   - has_legal_test: ${test.has_legal_test}`);
+          console.log(`[APP-LEGAL-TEST]   - test_name: ${test.test_name}`);
+          console.log(`[APP-LEGAL-TEST]   - test_parts: ${test.test_parts ? test.test_parts.length : 'NONE'}`);
+          console.log(`[APP-LEGAL-TEST]   - keys: ${Object.keys(test).join(', ')}`);
+          
+          if (test.has_legal_test && test.test_parts && test.test_parts.length > 0) {
+            console.log(`[APP-LEGAL-TEST] ✅ Rendering ${test.test_parts.length} steps for legal test`);
             let html = `<div style="padding: 20px; max-width: 600px;">
               <h3 style="color: var(--c-hi); margin-bottom: 20px; font-size: 16px;">${test.test_name || 'Multi-part Test'}</h3>
               <div style="display: flex; flex-direction: column; gap: 16px;">`;
-            test.steps.forEach((step, idx) => {
+            test.test_parts.forEach((step, idx) => {
+              console.log(`[APP-LEGAL-TEST]   └─ Step ${idx + 1}: ${step.label}`);
               html += `
                 <div style="border-left: 3px solid var(--accent); padding-left: 16px;">
                   <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                    <span style="width: 24px; height: 24px; background: var(--accent); color: var(--c-inverse); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;">${step.step_number}</span>
+                    <span style="width: 24px; height: 24px; background: var(--accent); color: var(--c-inverse); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;">${step.step}</span>
                     <span style="color: var(--c-hi); font-weight: 600;">${step.label}</span>
                     ${step.para_reference ? `<span style="font-size: 11px; color: var(--c-sub); margin-left: auto;">${step.para_reference}</span>` : ''}
                   </div>
@@ -1628,10 +1638,13 @@ function buildCaseViewer(c) {
             });
             html += '</div></div>';
             tp.innerHTML = html;
+            console.log(`[APP-LEGAL-TEST] ✅ Legal test rendered successfully`);
           } else {
+            console.log(`[APP-LEGAL-TEST] ⚠️  No legal test found. has_legal_test=${test.has_legal_test}, test_parts=${test.test_parts ? test.test_parts.length : 'none'}`);
             tp.innerHTML = '<div style="padding: 20px; color: var(--c-sub); text-align: center;">This case does not have an identified legal test.</div>';
           }
         } catch (e) {
+          console.error(`[APP-LEGAL-TEST] ❌ Error loading legal test:`, e);
           tp.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load legal test</p>';
         }
       }
@@ -2141,16 +2154,25 @@ function buildFullCaseViewer(caseMetadata, judgmentParagraphs, citationsFlat, ca
       // Load Legal Test on demand
       if (tid === 'test' && testPanel.innerHTML.includes('Loading')) {
         try {
+          console.log(`[APP-LEGAL-TEST-FULL] 🔍 Loading legal test for full case: ${caseData.id}`);
           const test = await API.getLegalTest(caseData.id);
-          if (test.has_legal_test && test.steps) {
+          
+          console.log(`[APP-LEGAL-TEST-FULL] 📊 Received test data:`, test);
+          console.log(`[APP-LEGAL-TEST-FULL]   - has_legal_test: ${test.has_legal_test}`);
+          console.log(`[APP-LEGAL-TEST-FULL]   - test_name: ${test.test_name}`);
+          console.log(`[APP-LEGAL-TEST-FULL]   - test_parts: ${test.test_parts ? test.test_parts.length : 'NONE'}`);
+          
+          if (test.has_legal_test && test.test_parts && test.test_parts.length > 0) {
+            console.log(`[APP-LEGAL-TEST-FULL] ✅ Rendering ${test.test_parts.length} steps`);
             let html = `<div style="padding: 20px; max-width: 600px;">
               <h3 style="color: var(--c-hi); margin-bottom: 20px; font-size: 16px;">${test.test_name || 'Multi-part Test'}</h3>
               <div style="display: flex; flex-direction: column; gap: 16px;">`;
-            test.steps.forEach((step, idx) => {
+            test.test_parts.forEach((step, idx) => {
+              console.log(`[APP-LEGAL-TEST-FULL]   └─ Step ${idx + 1}: ${step.label}`);
               html += `
                 <div style="border-left: 3px solid var(--accent); padding-left: 16px;">
                   <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                    <span style="width: 24px; height: 24px; background: var(--accent); color: var(--c-inverse); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;">${step.step_number}</span>
+                    <span style="width: 24px; height: 24px; background: var(--accent); color: var(--c-inverse); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;">${step.step}</span>
                     <span style="color: var(--c-hi); font-weight: 600;">${step.label}</span>
                     ${step.para_reference ? `<span style="font-size: 11px; color: var(--c-sub); margin-left: auto;">${step.para_reference}</span>` : ''}
                   </div>
@@ -2162,11 +2184,14 @@ function buildFullCaseViewer(caseMetadata, judgmentParagraphs, citationsFlat, ca
             html += '</div></div>';
             testPanel.innerHTML = html;
             requestInProgress.delete(tid);
+            console.log(`[APP-LEGAL-TEST-FULL] ✅ Legal test rendered`);
           } else {
+            console.log(`[APP-LEGAL-TEST-FULL] ⚠️  No legal test found`);
             testPanel.innerHTML = '<div style="padding: 20px; color: var(--c-sub); text-align: center;">This case does not have an identified legal test.</div>';
             requestInProgress.delete(tid);
           }
         } catch (e) {
+          console.error(`[APP-LEGAL-TEST-FULL] ❌ Error:`, e);
           testPanel.innerHTML = '<p style="padding: 20px; color: var(--error);">Failed to load legal test</p>';
           requestInProgress.delete(tid);
         }

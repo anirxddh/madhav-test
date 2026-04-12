@@ -640,7 +640,26 @@ const API = {
       if (!res.ok) {
         throw new Error('Quick brief failed');
       }
-      return await res.json();
+
+      // Handle SSE streaming response
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let data = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const json = JSON.parse(line.replace('data: ', ''));
+            data = json;
+          }
+        }
+      }
+
+      return data || { one_liner: '', summary_30s: '', source: 'error' };
     } catch (err) {
       console.error(`[API] Quick brief error: ${err.message}`);
       return { one_liner: '', summary_30s: '', source: 'error' };
@@ -702,18 +721,105 @@ const API = {
     }
 
     try {
-      const res = await fetch(`${BASE_URL}/api/study/legal-test`, {
+      console.log(`[API-LEGAL-TEST] 🔍 Fetching legal test for case: ${caseId}`);
+      const url = `${BASE_URL}/api/study/legal-test`;
+      console.log(`[API-LEGAL-TEST] 📤 POST to ${url}`);
+      
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ case_id: caseId }),
       });
 
+      console.log(`[API-LEGAL-TEST] 📡 Response status: ${res.status}`);
+      
       if (!res.ok) {
-        throw new Error('Legal test extraction failed');
+        throw new Error(`Legal test extraction failed: ${res.status}`);
       }
-      return await res.json();
+
+      // Handle SSE streaming response
+      console.log(`[API-LEGAL-TEST] 🔄 Opening stream reader...`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      
+      let accumulatedText = '';  // Accumulate all content
+      let data = null;
+      let chunkCount = 0;
+      let lineCount = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        chunkCount++;
+        
+        if (done) {
+          console.log(`[API-LEGAL-TEST] ✅ Stream ended (${chunkCount} chunks, ${lineCount} lines)`);
+          break;
+        }
+        
+        const chunk = decoder.decode(value);
+        console.log(`[API-LEGAL-TEST] 📨 Chunk ${chunkCount} (${chunk.length} bytes): ${chunk.substring(0, 100)}...`);
+        
+        const lines = chunk.split('\n\n');
+        console.log(`[API-LEGAL-TEST]   └─ Split into ${lines.length} lines`);
+        
+        for (const line of lines) {
+          if (line.trim()) {
+            lineCount++;
+            console.log(`[API-LEGAL-TEST]   └─ Line ${lineCount}: "${line.substring(0, 80)}..."`);
+          }
+          
+          if (line.startsWith('data: ')) {
+            const sseContent = line.replace('data: ', '').trim();
+            console.log(`[API-LEGAL-TEST]   └─ SSE content: ${sseContent.substring(0, 150)}...`);
+            
+            try {
+              const json = JSON.parse(sseContent);
+              console.log(`[API-LEGAL-TEST]   └─ ✅ Parsed JSON:`, JSON.stringify(json).substring(0, 200));
+              
+              // Check if this is token stream or final JSON
+              if (json.token !== undefined) {
+                // This is a token message
+                accumulatedText += json.token;
+                console.log(`[API-LEGAL-TEST]   └─ Token accumulated. Total so far: ${accumulatedText.length} chars`);
+              } else if (json.has_legal_test !== undefined) {
+                // This is final response with has_legal_test field
+                data = json;
+                console.log(`[API-LEGAL-TEST]   └─ ✅ Got final response: has_legal_test=${json.has_legal_test}`);
+              } else {
+                // Unknown JSON format
+                console.log(`[API-LEGAL-TEST]   └─ ⚠️  Unknown JSON format. Keys:`, Object.keys(json));
+                data = json;
+              }
+            } catch (parseErr) {
+              console.error(`[API-LEGAL-TEST]   └─ ❌ JSON parse error: ${parseErr.message}`);
+              console.error(`[API-LEGAL-TEST]   └─ Problematic content: ${sseContent.substring(0, 200)}`);
+            }
+          }
+        }
+      }
+
+      console.log(`[API-LEGAL-TEST] 📊 Stream summary:`);
+      console.log(`[API-LEGAL-TEST]   - Total chunks: ${chunkCount}`);
+      console.log(`[API-LEGAL-TEST]   - Total lines: ${lineCount}`);
+      console.log(`[API-LEGAL-TEST]   - Accumulated tokens: ${accumulatedText.length} chars`);
+      console.log(`[API-LEGAL-TEST]   - Final data:`, data ? JSON.stringify(data).substring(0, 300) : 'NULL');
+
+      // If we have accumulated text but no data, try parsing the text as JSON
+      if (accumulatedText && !data) {
+        console.log(`[API-LEGAL-TEST] 🔄 Attempting to parse accumulated text as JSON...`);
+        try {
+          data = JSON.parse(accumulatedText);
+          console.log(`[API-LEGAL-TEST] ✅ Successfully parsed accumulated text`);
+        } catch (err) {
+          console.error(`[API-LEGAL-TEST] ❌ Failed to parse accumulated text: ${err.message}`);
+        }
+      }
+
+      const result = data || { has_legal_test: false };
+      console.log(`[API-LEGAL-TEST] 🎯 Returning:`, JSON.stringify(result).substring(0, 300));
+      return result;
     } catch (err) {
-      console.error(`[API] Legal test error: ${err.message}`);
+      console.error(`[API-LEGAL-TEST] ❌ Error: ${err.message}`, err);
       return { has_legal_test: false };
     }
   },
