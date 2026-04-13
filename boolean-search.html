@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Boolean Case Search — Madhav.AI Legal Intelligence</title>
+  <link rel="stylesheet" href="css/boolean-search.css">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="boolean-search-app">
+    <!-- HEADER -->
+    <div class="bs-header">
+      <h1>⚖️ Boolean Case Search</h1>
+      <p>Legal case retrieval with advanced Boolean operators (AND, OR, NOT, proximity, wildcards)</p>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="bs-main">
+      <!-- SIDEBAR: FILTERS -->
+      <div class="bs-sidebar">
+        <div class="bs-filter-group">
+          <h3>🔍 Filters</h3>
+
+          <!-- Court Filter -->
+          <div class="bs-filter-control">
+            <label>Court</label>
+            <input type="text" id="filter-court" placeholder="e.g., Supreme Court, Delhi HC">
+          </div>
+
+          <!-- Date Range -->
+          <div class="bs-filter-control">
+            <label>Year From</label>
+            <input type="number" id="filter-year-from" placeholder="e.g., 2015" min="1800" max="2100">
+          </div>
+
+          <div class="bs-filter-control">
+            <label>Year To</label>
+            <input type="number" id="filter-year-to" placeholder="e.g., 2025" min="1800" max="2100">
+          </div>
+
+          <!-- Act Filter -->
+          <div class="bs-filter-control">
+            <label>Act / Statute</label>
+            <input type="text" id="filter-act" placeholder="e.g., IPC, CrPC">
+          </div>
+
+          <!-- Section Filter -->
+          <div class="bs-filter-control">
+            <label>Section</label>
+            <input type="text" id="filter-section" placeholder="e.g., 302">
+          </div>
+
+          <!-- Judge Filter -->
+          <div class="bs-filter-control">
+            <label>Judge Name</label>
+            <input type="text" id="filter-judge" placeholder="e.g., Chandrachud">
+          </div>
+
+          <!-- Document Type -->
+          <div class="bs-filter-control">
+            <label>Document Type</label>
+            <select id="filter-doc-type">
+              <option value="">All Types</option>
+              <option value="judgment">Judgment</option>
+              <option value="order">Order</option>
+              <option value="notification">Notification</option>
+            </select>
+          </div>
+
+          <!-- Clear Filters -->
+          <button class="bs-filter-clear" id="btn-clear-filters">Clear All Filters</button>
+        </div>
+
+        <!-- Health Check -->
+        <div class="bs-filter-group" id="health-info">
+          <p style="font-size: 11px; color: var(--color-text-secondary);">
+            <span id="health-status" style="color: var(--color-success);">✓</span>
+            Database ready
+          </p>
+          <p style="font-size: 11px; color: var(--color-text-secondary); margin-top: 4px;" id="db-stats"></p>
+        </div>
+      </div>
+
+      <!-- CONTENT: SEARCH & RESULTS -->
+      <div class="bs-content">
+        <!-- SEARCH AREA -->
+        <div class="bs-search-area">
+          <!-- Search Query Input -->
+          <div class="bs-query-input-group">
+            <input 
+              type="text" 
+              id="query-input" 
+              class="bs-query-input" 
+              placeholder='e.g., murder AND intention | "natural justice" AND article:21 | (arrest W/5 warrant)'
+              autocomplete="off"
+            >
+            <button id="btn-search" class="bs-search-btn">
+              <span id="search-btn-text">🔍 Search</span>
+            </button>
+          </div>
+
+          <!-- Validation Status -->
+          <div id="validation-status" class="bs-validation-status"></div>
+
+          <!-- Operator Buttons -->
+          <div class="bs-operator-buttons">
+            <button class="bs-operator-btn" onclick="insertOperator('AND')">AND</button>
+            <button class="bs-operator-btn" onclick="insertOperator('OR')">OR</button>
+            <button class="bs-operator-btn" onclick="insertOperator('NOT')">NOT</button>
+            <button class="bs-operator-btn" onclick="insertOperator('W/5')">W/5</button>
+            <button class="bs-operator-btn" onclick="insertOperator('NEAR/5')">NEAR/5</button>
+            <button class="bs-operator-btn" onclick="insertOperator('PHRASE')">Phrase</button>
+            <button class="bs-operator-btn" onclick="insertOperator('*')">Wildcard*</button>
+            <button class="bs-operator-btn" onclick="insertOperator('(')">Open Paren</button>
+            <button class="bs-operator-btn" onclick="insertOperator(')')">Close Paren</button>
+          </div>
+        </div>
+
+        <!-- RESULTS PANEL -->
+        <div class="bs-results">
+          <!-- Results Header -->
+          <div class="bs-results-header" id="results-header" style="display: none;">
+            <div class="bs-results-info">
+              Found <span id="result-count">0</span> cases | 
+              Page <span id="current-page">1</span>/<span id="total-pages">1</span> | 
+              Time: <span id="query-time">0</span>ms
+            </div>
+            <div class="bs-sort-control">
+              <label for="sort-by">Sort by:</label>
+              <select id="sort-by" onchange="handleSortChange()">
+                <option value="relevance">Relevance (Best Match)</option>
+                <option value="date_desc">Date (Newest First)</option>
+                <option value="date_asc">Date (Oldest First)</option>
+                <option value="citations">Citation Count</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Message Container -->
+          <div id="message-container" style="padding: 0 var(--spacing-md);"></div>
+
+          <!-- Results List -->
+          <div class="bs-results-list" id="results-list">
+            <!-- Results dynamically inserted here -->
+          </div>
+
+          <!-- Pagination -->
+          <div class="bs-pagination" id="pagination" style="display: none;">
+            <button id="btn-prev" onclick="previousPage()">← Previous</button>
+            <div id="pagination-numbers"></div>
+            <button id="btn-next" onclick="nextPage()">Next →</button>
+            <div class="bs-pagination-info" id="pagination-info"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="js/boolean-api.js"></script>
+  <script>
+    // ═════════════════════════════════════════════════════════════════════════════
+    // BOOLEAN SEARCH FRONTEND APPLICATION
+    // ═════════════════════════════════════════════════════════════════════════════
+
+    let currentPage = 1;
+    let pageSize = 25;
+    let totalResults = 0;
+    let totalPages = 1;
+    let lastQuery = '';
+    let lastFilters = {};
+    let lastSortBy = 'relevance';
+    let isLoading = false;
+
+    // Store search history in localStorage
+    const HISTORY_KEY = 'boolean_search_history';
+    const MAX_HISTORY = 20;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // INITIALIZATION
+    // ─────────────────────────────────────────────────────────────────────────
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeApp();
+      checkDatabaseHealth();
+      setupEventListeners();
+    });
+
+    function initializeApp() {
+      console.log('🚀 Boolean Search Frontend Initialized');
+      
+      // Load history if available
+      loadSearchHistory();
+    }
+
+    function setupEventListeners() {
+      const queryInput = document.getElementById('query-input');
+      const searchBtn = document.getElementById('btn-search');
+
+      // Real-time validation as user types
+      queryInput.addEventListener('input', debounce(() => {
+        validateQuery(queryInput.value);
+      }, 500));
+
+      // Search on Enter key
+      queryInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          searchBtn.click();
+        }
+      });
+
+      // Search button click
+      searchBtn.addEventListener('click', () => {
+        currentPage = 1;
+        performSearch();
+      });
+
+      // Clear filters button
+      document.getElementById('btn-clear-filters').addEventListener('click', clearAllFilters);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DATABASE HEALTH CHECK
+    // ─────────────────────────────────────────────────────────────────────────
+
+    async function checkDatabaseHealth() {
+      try {
+        const health = await BooleanSearchAPI.health();
+        if (health.status === 'ok') {
+          const stats = `${health.case_count?.toLocaleString()} cases | ${health.paragraph_count?.toLocaleString()} paragraphs`;
+          document.getElementById('db-stats').textContent = stats;
+          document.getElementById('health-status').textContent = '✓';
+          document.getElementById('health-status').style.color = 'var(--color-success)';
+        }
+      } catch (error) {
+        console.error('Health check failed:', error);
+        document.getElementById('health-status').textContent = '✗';
+        document.getElementById('health-status').style.color = 'var(--color-error)';
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // QUERY VALIDATION (REAL-TIME)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    async function validateQuery(query) {
+      if (!query.trim()) {
+        document.getElementById('validation-status').innerHTML = '';
+        document.getElementById('validation-status').classList.remove('valid', 'invalid');
+        return;
+      }
+
+      try {
+        const result = await BooleanSearchAPI.validate(query);
+        const statusEl = document.getElementById('validation-status');
+
+        if (result.valid) {
+          statusEl.innerHTML = '✓ Valid query syntax';
+          statusEl.className = 'bs-validation-status valid';
+        } else {
+          statusEl.innerHTML = `✗ ${result.error || 'Invalid query'}`;
+          statusEl.className = 'bs-validation-status invalid';
+        }
+      } catch (error) {
+        console.error('Validation error:', error);
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SEARCH EXECUTION
+    // ─────────────────────────────────────────────────────────────────────────
+
+    async function performSearch() {
+      const query = document.getElementById('query-input').value.trim();
+
+      if (!query) {
+        showMessage('Please enter a search query', 'error');
+        return;
+      }
+
+      // Remember last query
+      lastQuery = query;
+      lastFilters = getFiltersFromUI();
+      lastSortBy = document.getElementById('sort-by').value;
+
+      // Update loading state
+      isLoading = true;
+      document.getElementById('btn-search').disabled = true;
+      document.getElementById('search-btn-text').innerHTML = '<span class="bs-spinner"></span> Searching...';
+
+      try {
+        // Validate first
+        const validation = await BooleanSearchAPI.validate(query);
+        if (!validation.valid) {
+          showMessage(`Invalid query: ${validation.error}`, 'error');
+          isLoading = false;
+          document.getElementById('btn-search').disabled = false;
+          document.getElementById('search-btn-text').textContent = '🔍 Search';
+          return;
+        }
+
+        // Perform search
+        const response = await BooleanSearchAPI.search(
+          query,
+          lastFilters,
+          lastSortBy,
+          currentPage,
+          pageSize
+        );
+
+        // Update state
+        totalResults = response.total_results;
+        totalPages = response.total_pages;
+
+        // Render results
+        renderResults(response);
+        renderPagination();
+
+        // Save to history
+        saveSearchToHistory(query);
+
+        // Show success
+        showMessage(`Found ${totalResults} cases in ${response.elapsed_ms}ms`, 'info');
+      } catch (error) {
+        showMessage(`Search error: ${error.message}`, 'error');
+        console.error('Search failed:', error);
+      } finally {
+        isLoading = false;
+        document.getElementById('btn-search').disabled = false;
+        document.getElementById('search-btn-text').textContent = '🔍 Search';
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // RENDER RESULTS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function renderResults(response) {
+      const resultsList = document.getElementById('results-list');
+      const resultsHeader = document.getElementById('results-header');
+
+      // Clear previous results
+      resultsList.innerHTML = '';
+
+      // Update header
+      document.getElementById('result-count').textContent = response.total_results;
+      document.getElementById('current-page').textContent = response.page;
+      document.getElementById('total-pages').textContent = response.total_pages;
+      document.getElementById('query-time').textContent = response.elapsed_ms;
+      resultsHeader.style.display = 'flex';
+
+      if (response.results.length === 0) {
+        resultsList.innerHTML = `
+          <div class="bs-empty-state">
+            <div class="bs-empty-state-icon">📭</div>
+            <h3>No results found</h3>
+            <p>Try adjusting your query or filters</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Render each result
+      response.results.forEach((result, idx) => {
+        const card = createResultCard(result, response.search_terms);
+        resultsList.appendChild(card);
+      });
+    }
+
+    function createResultCard(result, searchTerms = []) {
+      const card = document.createElement('div');
+      card.className = 'bs-result-card';
+
+      // Build meta information
+      const metaHTML = `
+        <div class="bs-result-meta">
+          <div class="bs-result-meta-item">
+            <span class="bs-result-meta-label">Court</span>
+            <span class="bs-result-meta-value bs-result-court">${result.court || 'N/A'}</span>
+          </div>
+          <div class="bs-result-meta-item">
+            <span class="bs-result-meta-label">Year</span>
+            <span class="bs-result-meta-value bs-result-year">${result.year || 'N/A'}</span>
+          </div>
+          <div class="bs-result-meta-item">
+            <span class="bs-result-meta-label">Petitioner</span>
+            <span class="bs-result-meta-value">${result.petitioner || 'N/A'}</span>
+          </div>
+          <div class="bs-result-meta-item">
+            <span class="bs-result-meta-label">Respondent</span>
+            <span class="bs-result-meta-value">${result.respondent || 'N/A'}</span>
+          </div>
+        </div>
+      `;
+
+      // Build snippet
+      const snippetHTML = result.snippet ? `
+        <div class="bs-result-snippet">
+          ${highlightTerms(result.snippet.plain_text || '', searchTerms)}
+        </div>
+      ` : '';
+
+      // Build tags
+      const tagsHTML = result.acts_referred ? `
+        <div class="bs-result-tags">
+          ${result.acts_referred.slice(0, 3).map(act => `<span class="bs-tag act">${act}</span>`).join('')}
+        </div>
+      ` : '';
+
+      // Assemble card
+      card.innerHTML = `
+        <div class="bs-result-header">
+          <div class="bs-result-title">
+            ${result.citation ? `<strong>${result.citation}</strong><br>` : ''}
+            ${result.case_name}
+          </div>
+          <div class="bs-result-score">${(result.relevance_score || 0).toFixed(1)}</div>
+        </div>
+        ${metaHTML}
+        ${snippetHTML}
+        ${tagsHTML}
+      `;
+
+      return card;
+    }
+
+    function highlightTerms(text, terms) {
+      let highlighted = text;
+      terms.forEach(term => {
+        const regex = new RegExp(`(${term})`, 'gi');
+        highlighted = highlighted.replace(regex, '<span class="bs-snippet-highlight">$1</span>');
+      });
+      return highlighted;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PAGINATION
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function renderPagination() {
+      const paginationEl = document.getElementById('pagination');
+      const numbersEl = document.getElementById('pagination-numbers');
+
+      if (totalPages <= 1) {
+        paginationEl.style.display = 'none';
+        return;
+      }
+
+      paginationEl.style.display = 'flex';
+
+      // Generate page numbers
+      let pages = [];
+      for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
+        pages.push(i);
+      }
+
+      numbersEl.innerHTML = pages.map(page => `
+        <button 
+          class="bs-page-btn ${page === currentPage ? 'bs-page-active' : ''}" 
+          onclick="goToPage(${page})"
+        >${page}</button>
+      `).join('');
+
+      document.getElementById('btn-prev').disabled = currentPage === 1;
+      document.getElementById('btn-next').disabled = currentPage === totalPages;
+      document.getElementById('pagination-info').textContent = `of ${totalPages}`;
+    }
+
+    function nextPage() {
+      if (currentPage < totalPages) {
+        currentPage++;
+        performSearch();
+        document.querySelector('.bs-results-list').scrollTop = 0;
+      }
+    }
+
+    function previousPage() {
+      if (currentPage > 1) {
+        currentPage--;
+        performSearch();
+        document.querySelector('.bs-results-list').scrollTop = 0;
+      }
+    }
+
+    function goToPage(page) {
+      currentPage = page;
+      performSearch();
+      document.querySelector('.bs-results-list').scrollTop = 0;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FILTER MANAGEMENT
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function getFiltersFromUI() {
+      return {
+        court: document.getElementById('filter-court').value || null,
+        yearFrom: document.getElementById('filter-year-from').value || null,
+        yearTo: document.getElementById('filter-year-to').value || null,
+        act: document.getElementById('filter-act').value || null,
+        section: document.getElementById('filter-section').value || null,
+        judge: document.getElementById('filter-judge').value || null,
+        docType: document.getElementById('filter-doc-type').value || null
+      };
+    }
+
+    function clearAllFilters() {
+      document.getElementById('filter-court').value = '';
+      document.getElementById('filter-year-from').value = '';
+      document.getElementById('filter-year-to').value = '';
+      document.getElementById('filter-act').value = '';
+      document.getElementById('filter-section').value = '';
+      document.getElementById('filter-judge').value = '';
+      document.getElementById('filter-doc-type').value = '';
+      showMessage('Filters cleared', 'info');
+    }
+
+    function handleSortChange() {
+      currentPage = 1;
+      performSearch();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // OPERATOR INSERTION
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function insertOperator(op) {
+      const input = document.getElementById('query-input');
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      const text = input.value;
+
+      let insert = '';
+      if (op === 'PHRASE') {
+        insert = '""';
+      } else if (op === '()') {
+        insert = '()';
+      } else if (op === 'atleast3()') {
+        insert = 'atleast3()';
+      } else {
+        insert = ` ${op} `;
+      }
+
+      input.value = text.substring(0, start) + insert + text.substring(end);
+      input.focus();
+      input.selectionStart = start + insert.length;
+
+      validateQuery(input.value);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MESSAGES
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function showMessage(text, type = 'info') {
+      const container = document.getElementById('message-container');
+      const msg = document.createElement('div');
+      msg.className = `bs-message ${type} show`;
+      msg.textContent = text;
+      container.innerHTML = '';
+      container.appendChild(msg);
+
+      setTimeout(() => {
+        msg.classList.remove('show');
+      }, 5000);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SEARCH HISTORY
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function saveSearchToHistory(query) {
+      let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      history = history.filter(q => q !== query);
+      history.unshift(query);
+      history = history.slice(0, MAX_HISTORY);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    }
+
+    function loadSearchHistory() {
+      // Can be used to populate autocomplete or history dropdown in future
+      const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      console.log('📚 Search History:', history);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // UTILITY FUNCTIONS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function debounce(fn, delay) {
+      let timerId;
+      return function (...args) {
+        clearTimeout(timerId);
+        timerId = setTimeout(() => fn(...args), delay);
+      };
+    }
+  </script>
+</body>
+</html>

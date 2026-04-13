@@ -42,6 +42,10 @@
         <span class="ico ico-db" aria-hidden="true"></span>
         Database Search
       </button>
+      <button class="sidebar__mode-btn" data-mode="boolean" id="nav-boolean" onclick="openBooleanSearch()">
+        <span class="ico ico-boolean" aria-hidden="true">⚖️</span>
+        Boolean Search
+      </button>
       <button class="sidebar__mode-btn" data-mode="drafting" id="nav-drafting">
         <span class="ico ico-draft" aria-hidden="true">✍️</span>
         Drafting Engine
@@ -426,6 +430,12 @@
   <script src="js/search.js"></script>
 
   <script>
+    // Open Boolean Search interface
+    function openBooleanSearch() {
+      // Navigate to the boolean search page
+      window.location.href = "boolean-search.html";
+    }
+
     // Initialize drafting engine and search when DOM is ready
     document.addEventListener("DOMContentLoaded", function () {
       MadhavDrafting.init("madhav-drafting");
